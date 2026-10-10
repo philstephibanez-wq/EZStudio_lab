@@ -31,10 +31,10 @@ def _num(value: str):
     except ValueError:
         return None
 
-class GenePerformanceProbe:
-    def __init__(self, *, gene_id: str, gene_name: str, family: str, device: str | None, audio_sha256: str) -> None:
-        self.gene_id = gene_id
-        self.gene_name = gene_name
+class ModulePerformanceProbe:
+    def __init__(self, *, module_id: str, module_name: str, family: str, device: str | None, audio_sha256: str) -> None:
+        self.module_id = module_id
+        self.module_name = module_name
         self.family = family
         self.device = device
         self.audio_sha256 = audio_sha256
@@ -54,7 +54,7 @@ class GenePerformanceProbe:
         self.dir.mkdir(parents=True, exist_ok=True)
         self._thread = threading.Thread(
             target=self._sample_loop,
-            name=f"perf-probe-{self.gene_id}",
+            name=f"perf-probe-{self.module_id}",
             daemon=True,
         )
         self._thread.start()
@@ -115,14 +115,14 @@ class GenePerformanceProbe:
             self._thread.join(timeout=3.0)
 
         payload = {
-            "schema": "ezstudio.observability.profile-gene.v1",
+            "schema": "ezstudio.observability.profile-module.v1",
             "scope": "observability-only",
-            "included_in_adn": False,
+            "included_in_preset": False,
             "audio_sha256": self.audio_sha256,
             "session": os.getenv("EZSTUDIO_PROFILE_OBSERVABILITY_SESSION", "profile"),
-            "gene": {
-                "id": self.gene_id,
-                "name": self.gene_name,
+            "module": {
+                "id": self.module_id,
+                "name": self.module_name,
                 "family": self.family,
                 "declared_device": self.device,
             },
@@ -142,8 +142,12 @@ class GenePerformanceProbe:
             "samples": self.samples,
         }
 
-        safe = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in self.gene_id)
+        safe = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in self.module_id)
         path = self.dir / f"{safe}.json"
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(path)
+
+
+# Deprecated compatibility alias.
+GenePerformanceProbe = ModulePerformanceProbe

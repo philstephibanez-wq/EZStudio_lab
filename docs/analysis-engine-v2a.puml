@@ -1,0 +1,53 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+class AnalysisEngine {
+  +plan(PhasePreset): ExecutionPlan
+  +execute(PhasePreset, context_factory): PhaseExecution
+}
+
+class PresetLoader {
+  +load_phase(path): LoadedPreset
+  +load_chain(path): LoadedPreset
+}
+
+class ExecutionPlanner {
+  +build(PhasePreset): ExecutionPlan
+}
+
+class EngineAdapterRegistry {
+  +register(name, adapter)
+  +execute(name, spec, context)
+}
+
+class ModelResolver {
+  +resolve(ModulePreset): ResolvedModel
+}
+
+class ProvenanceRecorder {
+  +fingerprint(config)
+  +plan_provenance(plan)
+}
+
+class ChainPreset
+class PhasePreset
+class ModulePreset
+interface EngineAdapter
+class Engine
+class Model
+
+ChainPreset "1" o-- "*" PhasePreset
+PhasePreset "1" o-- "*" ModulePreset
+ModulePreset --> EngineAdapter : adapter
+ModulePreset --> Engine : engine
+ModulePreset --> Model : model
+
+AnalysisEngine --> PresetLoader
+AnalysisEngine --> ExecutionPlanner
+AnalysisEngine --> EngineAdapterRegistry
+AnalysisEngine --> ProvenanceRecorder
+EngineAdapterRegistry --> EngineAdapter
+EngineAdapter --> Engine
+Engine --> Model
+ModelResolver --> Model
+@enduml

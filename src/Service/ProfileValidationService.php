@@ -77,7 +77,7 @@ SQL);
         $tempo = $metrics['tempo']['bpm'] ?? null;
         if (is_numeric($tempo)) {
             $subjects[] = $this->subject(
-                'region:tempo', 'tempo', 'Tempo',
+                'phase:tempo', 'tempo', 'Tempo',
                 ['bpm' => (float)$tempo],
                 number_format((float)$tempo, 2, '.', '').' BPM'
             );
@@ -98,7 +98,7 @@ SQL);
                 $text .= ' · score '.number_format((float)$payload['confidence'] * 100, 1).' %';
             }
             $subjects[] = $this->subject(
-                'region:time_signature', 'time_signature', 'Signature',
+                'phase:time_signature', 'time_signature', 'Signature',
                 $payload,
                 $text !== '' ? $text : $this->compactJson($payload)
             );
@@ -123,7 +123,7 @@ SQL);
             if (is_numeric($support) && is_numeric($total) && (int)$total > 0) {
                 $text .= ' · consensus '.(int)$support.'/'.(int)$total;
             }
-            $subjects[] = $this->subject('region:key', 'key', 'Tonalité finale', $keyPayload, $text);
+            $subjects[] = $this->subject('phase:key', 'key', 'Tonalité finale', $keyPayload, $text);
         }
 
         foreach ([
@@ -165,7 +165,7 @@ SQL);
             }
         }
         $subjects[] = $this->subject(
-            'region:instrumentation',
+            'phase:instrumentation',
             'instrumentation',
             'Instruments',
             $instrumentation,
@@ -185,7 +185,7 @@ SQL);
                 default => 'Pas de preuve suffisante',
             };
             $subjects[] = $this->subject(
-                'region:choirs',
+                'phase:choirs',
                 'choirs',
                 'Chœurs',
                 $choirs,
@@ -203,7 +203,7 @@ SQL);
                 $text .= ' · score '.number_format((float)$audioSet['confidence'] * 100, 1).' %';
             }
             $subjects[] = $this->subject(
-                'region:audioset',
+                'phase:audioset',
                 'audioset',
                 'Élément sonore',
                 $audioSet,

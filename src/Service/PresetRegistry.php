@@ -101,7 +101,7 @@ SQL);
             throw new \RuntimeException('preset_run_phase_mismatch');
         }
 
-        $modules = $manifest['modules'] ?? $manifest['genes'] ?? null;
+        $modules = $manifest['modules'] ?? null;
         if (!is_array($modules) || $modules === []) {
             throw new \RuntimeException('preset_manifest_modules_missing');
         }
@@ -172,7 +172,7 @@ SQL);
             }
 
             $phaseIdentity = [
-                'schema' => 'ezstudio.genome.phase.v1',
+                'schema' => 'ezstudio.preset.phase.v1',
                 'phase' => $phase,
                 'pipeline_revision' => $pipelineRevision,
                 'modules' => array_map(
@@ -239,7 +239,7 @@ SQL);
                     $status,
                     $this->canonicalJson([
                         'manifest_schema' => $manifest['schema']
-                            ?? 'ezstudio.genome.phase.v1',
+                            ?? 'ezstudio.preset.phase.v1',
                     ]),
                     gmdate('c'),
                 ]);

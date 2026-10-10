@@ -7,19 +7,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "python" / "ezstudio" / "runtime"
-SPEC = ROOT / "adn" / "specs" / "profile" / "semantic.clap-open-vocabulary.r3b35c.json"
+SPEC = ROOT / "presets" / "profile" / "semantic.clap-open-vocabulary.r3b35c.json"
 
 sys.path.insert(0, str(ROOT / "python"))
 
-from ezstudio.runtime.gene_spec import load_gene_spec  # noqa: E402
+from ezstudio.runtime.module_config import load_module_config  # noqa: E402
 from ezstudio.runtime.decision import apply_decision  # noqa: E402
 from ezstudio.runtime.engine_registry import EngineAdapterRegistry, EngineAdapterError  # noqa: E402
 
 
 def main() -> int:
-    doc = load_gene_spec(SPEC)
-    assert doc.gene_id == "semantic.clap-open-vocabulary"
-    assert doc.region == "profile"
+    doc = load_module_config(SPEC)
+    assert doc.module_id == "semantic.clap-open-vocabulary"
+    assert doc.phase == "profile"
     assert doc.revision == "r3b35c-compat-v1"
     assert len(doc.sha256) == 64
 
@@ -48,7 +48,7 @@ def main() -> int:
     assert abstain["abstained"] is True
 
     registry = EngineAdapterRegistry()
-    registry.register("dummy", lambda spec, context: {"ok": True, "spec": spec["gene"]["id"]})
+    registry.register("dummy", lambda spec, context: {"ok": True, "spec": spec["module"]["id"]})
     assert registry.execute("dummy", doc.data, None)["ok"] is True
     try:
         registry.execute("missing", doc.data, None)
@@ -59,7 +59,7 @@ def main() -> int:
 
     print("DECLARATIVE_RUNTIME_V1A_CONTRACT_OK")
     print("Common runtime: profile/stems/chords/lyrics")
-    print("PROFILE R3B35C CLAP Gene Spec encoded without changing execution")
+    print("PROFILE R3B35C CLAP Module Config encoded without changing execution")
     print("No scientific mutation in V1A")
     return 0
 

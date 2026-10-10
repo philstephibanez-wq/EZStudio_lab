@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from ezstudio.runtime.decision import apply_decision
-from ezstudio.runtime.gene_spec import ModuleConfigDocument
+from ezstudio.runtime.module_config import ModuleConfigDocument
 
 
 def _dependency_root() -> Path:
@@ -34,7 +34,7 @@ def _model_dir(model_root: Path, spec: ModuleConfigDocument) -> Path:
         return p if p.is_absolute() else model_root / p
     model_id = str(engine.get("model") or "").strip()
     if not model_id:
-        raise ValueError("clap_gene_spec_model_required")
+        raise ValueError("clap_module_config_model_required")
     return model_root / model_id.rsplit("/", 1)[-1]
 
 
@@ -181,7 +181,7 @@ def run_clap_zero_shot(
     chunk_seconds = float(parameters.get("chunk_seconds", 10.0))
     max_chunks = int(parameters.get("max_chunks", 8))
     if sample_rate <= 0 or chunk_seconds <= 0 or max_chunks <= 0:
-        raise ValueError("clap_gene_spec_parameters_invalid")
+        raise ValueError("clap_module_config_parameters_invalid")
 
     taxonomy = _taxonomy(spec)
     families = tuple(taxonomy.keys())
@@ -195,7 +195,7 @@ def run_clap_zero_shot(
                 "category_relative_softmax",
             )
         ),
-        "gene_spec": spec.provenance(),
+        "module_config": spec.provenance(),
     }
     for family in families:
         result[family] = []

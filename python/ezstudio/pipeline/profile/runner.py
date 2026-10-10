@@ -11,28 +11,28 @@ from pathlib import Path
 
 import numpy as np
 
-from gene import ModuleContext, ModuleConfig
-from gene_registry import ModuleRegistry
-from genes import descriptors_librosa
-from genes import embedding_mert
-from genes import meter_chords_shared
-from genes import rhythm_librosa
-from genes import semantic_clap_open_vocab
-from genes import semantic_panns
-from genes import semantic_passt
-from genes import tonal_ks
-from genes import tonal_madmom_key
+from module import ModuleContext, ModuleConfig
+from module_registry import ModuleRegistry
+from modules import descriptors_librosa
+from modules import embedding_mert
+from modules import meter_chords_shared
+from modules import rhythm_librosa
+from modules import semantic_clap_open_vocab
+from modules import semantic_panns
+from modules import semantic_passt
+from modules import tonal_ks
+from modules import tonal_madmom_key
 
 R3B13_PROFILE_CONSOLIDATION = True
 R3B14_PROFILE_REPAIR = True
 SCHEMA = "ezstudio.profile.v1"
 R3B15B_MADMOM_44100 = True
-R3B15_PROFILE_GENES = True
+R3B15_PROFILE_MODULES = True
 R3B16_PROFILE_CONFIDENCE = True
 R3B17_PROFILE_CONFIDENCE_V2 = True
 R3B18_PROFILE_CONFIDENCE_V3 = True
 R3B19_PROFILE_SEMANTIC_ROLES = True
-R3B31_GENOMIC_EVOLUTION = True
+R3B31_PRESET_EVOLUTION = True
 R3B35C_CANONICAL_PROFILE = True
 R3B35_PROFILE_FAST_STUDY = True
 R3B35B_CLAP_CHOIRS = True
@@ -65,12 +65,12 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _gene_by_id(
+def _module_by_id(
     module_registry_result: dict,
-    gene_id: str,
+    module_id: str,
 ) -> dict | None:
-    for record in module_registry_result.get("genes") or []:
-        if record.get("id") == gene_id:
+    for record in module_registry_result.get("modules") or []:
+        if record.get("id") == module_id:
             return record
     return None
 
@@ -86,16 +86,16 @@ def _legacy_projection(
     module_registry_result: dict,
     duration: float,
 ) -> tuple[dict, dict, list[str]]:
-    rhythm = _gene_by_id(module_registry_result, "rhythm.librosa-beat")
-    meter = _gene_by_id(module_registry_result, "meter.chords-shared-r9")
+    rhythm = _module_by_id(module_registry_result, "rhythm.librosa-beat")
+    meter = _module_by_id(module_registry_result, "meter.chords-shared-r9")
     tonal_consensus = (
         (module_registry_result.get("consensus") or {}).get("tonal") or {}
     )
-    descriptors = _gene_by_id(
+    descriptors = _module_by_id(
         module_registry_result,
         "descriptors.librosa-lowlevel",
     )
-    clap = _gene_by_id(
+    clap = _module_by_id(
         module_registry_result,
         "semantic.clap-open-vocabulary",
     )
@@ -141,7 +141,7 @@ def _legacy_projection(
     }
 
     # Compatibility projection: CLAP remains the visible open-vocabulary
-    # tagging backend. Scientific truth stays in the independent gene outputs.
+    # tagging backend. Scientific truth stays in the independent module outputs.
     if clap and clap.get("status") == "ok":
         tagging = _normalized(clap)
         tagging["available"] = True
@@ -157,14 +157,14 @@ def _legacy_projection(
         }
 
     warnings: list[str] = []
-    for record in module_registry_result.get("genes") or []:
+    for record in module_registry_result.get("modules") or []:
         warnings.extend(
             str(item) for item in (record.get("warnings") or [])
         )
         if record.get("status") == "error":
             error = record.get("error") or {}
             warnings.append(
-                "profile_gene_error:"
+                "profile_module_error:"
                 + str(record.get("id"))
                 + ":"
                 + str(error.get("type") or "")
@@ -177,10 +177,10 @@ def _legacy_projection(
 
 
 def _profile_view(module_registry_result: dict) -> dict:
-    records = module_registry_result.get("genes") or []
+    records = module_registry_result.get("modules") or []
     consensus = module_registry_result.get("consensus") or {}
 
-    gene_rows = []
+    module_rows = []
     embeddings = []
     counts = {"ok": 0, "skipped": 0, "error": 0}
 
@@ -188,7 +188,7 @@ def _profile_view(module_registry_result: dict) -> dict:
         status = str(record.get("status") or "error")
         counts[status] = counts.get(status, 0) + 1
         error = record.get("error") if isinstance(record.get("error"), dict) else {}
-        gene_rows.append(
+        module_rows.append(
             {
                 "id": record.get("id"),
                 "name": record.get("name"),
@@ -225,7 +225,7 @@ def _profile_view(module_registry_result: dict) -> dict:
 
     return {
         "counts": counts,
-        "genes": gene_rows,
+        "modules": module_rows,
         "tonal": consensus.get("tonal") or {},
         "genre_hierarchy": consensus.get("genre_hierarchy") or {},
         "vocal_profile": consensus.get("vocal_profile") or {},
@@ -503,8 +503,6 @@ def build_module_registry(
 
 
 
-# Legacy callable alias during terminology migration.
-build_gene_registry = build_module_registry
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -548,8 +546,8 @@ def main() -> int:
             message,
         ),
     )
-    genome_manifest = module_registry.genome_manifest(
-        module_registry_result.get("genes") or [],
+    preset_manifest = module_registry.preset_manifest(
+        module_registry_result.get("modules") or [],
     )
 
     characteristics, tagging, warnings = _legacy_projection(
@@ -565,12 +563,12 @@ def main() -> int:
         "characteristics": characteristics,
         "tagging": tagging,
         "profile_view": profile_view,
-        "gene_registry": {
+        "module_registry": {
             **module_registry_result,
             "ai_models_root": str(ai_root),
             "profile_models_root": str(profile_root),
         },
-        "genome": genome_manifest,
+        "preset": preset_manifest,
         "warnings": warnings,
         "environment": {
             "python": sys.version.split()[0],
@@ -587,7 +585,7 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "genes-r3b35c-canonical-contract",
+            "profile_architecture": "modules-r3b35c-canonical-contract",
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
@@ -596,7 +594,7 @@ def main() -> int:
         "automatic_next_stage": False,
     }
 
-    write_progress(progress, 96, "PROFILE: écriture ADN R3B31")
+    write_progress(progress, 96, "PROFILE: écriture Preset R3B31")
     tmp = output.with_suffix(".tmp")
     tmp.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),

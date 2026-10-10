@@ -19,7 +19,7 @@ class RegisteredAdapter:
 
 
 class EngineAdapterRegistry:
-    """Region-agnostic registry of engine/model adapters.
+    """Phase-agnostic registry of engine/model adapters.
 
     A Module Config points to an adapter by stable name. The adapter owns only the
     technical inference capability; scientific choices remain in the Module Config.

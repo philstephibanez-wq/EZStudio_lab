@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "canonical_profile.py"
-REGISTRY = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "gene_registry.py"
+REGISTRY = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "module_registry.py"
 RUNNER = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
 
 spec = importlib.util.spec_from_file_location("canonical_profile", MODULE)
@@ -38,8 +38,8 @@ semantic = {
                 "support": 2,
                 "decision": "accepted",
                 "source_evidence": [
-                    {"gene": "semantic.panns-cnn14"},
-                    {"gene": "semantic.passt-audioset"},
+                    {"module": "semantic.panns-cnn14"},
+                    {"module": "semantic.passt-audioset"},
                 ],
             }
         ],
@@ -49,21 +49,21 @@ semantic = {
                 "support": 2,
                 "decision": "accepted",
                 "source_evidence": [
-                    {"gene": "semantic.panns-cnn14"},
-                    {"gene": "semantic.passt-audioset"},
+                    {"module": "semantic.panns-cnn14"},
+                    {"module": "semantic.passt-audioset"},
                 ],
             },
             {
                 "label": "Chant",
                 "support": 1,
                 "decision": "uncertain",
-                "source_evidence": [{"gene": "semantic.panns-cnn14"}],
+                "source_evidence": [{"module": "semantic.panns-cnn14"}],
             },
             {
                 "label": "Vocal music",
                 "support": 1,
                 "decision": "uncertain",
-                "source_evidence": [{"gene": "semantic.passt-audioset"}],
+                "source_evidence": [{"module": "semantic.passt-audioset"}],
             },
         ],
     },

@@ -1240,7 +1240,7 @@ SQL);
 
             $insert = $pdo->prepare(
                 'INSERT INTO analysis_resource_locks(
-                    song_id,region,operation,owner,created_at,expires_at_epoch
+                    song_id,phase,operation,owner,created_at,expires_at_epoch
                  ) VALUES(?,?,?,?,?,?)'
             );
             foreach ($songIds as $songId) {

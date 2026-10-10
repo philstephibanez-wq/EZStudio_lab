@@ -97,7 +97,7 @@ final class ProfileDnaExecutionService
             'audio_sha256' => $result['audio_sha256'] ?? '',
         ], 'PROFILE JSON');
 
-        $presetManifest = $result['preset'] ?? $result['genome'] ?? null;
+        $presetManifest = $result['preset'] ?? $result['preset'] ?? null;
         if (!is_array($presetManifest)) {
             throw new \RuntimeException('profile_preset_manifest_missing');
         }
@@ -108,7 +108,7 @@ final class ProfileDnaExecutionService
         );
 
         $metrics = is_array($result['characteristics'] ?? null) ? $result['characteristics'] : [];
-        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'module_registry' => $result['module_registry'] ?? $result['gene_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
+        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'module_registry' => $result['module_registry'] ?? $result['module_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
         $environment = is_array($result['environment'] ?? null) ? $result['environment'] : [];
         $this->runRegistry->setLabel(
             $runId,

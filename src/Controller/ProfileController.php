@@ -146,7 +146,7 @@ final class ProfileController extends AbstractController
         $run = $runRegistry->createRun(
             (int)$song['id'],
             'profile',
-            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b31', 'model' => 'multi-engine-profile-genes'],
+            ['name' => 'ezstudio-profile-modules', 'version' => 'r3b31', 'model' => 'multi-engine-profile-modules'],
             [
                 'audio_sha256' => (string)$song['audio_sha256'],
                 'output_contract' => 'ezstudio.profile.v1',

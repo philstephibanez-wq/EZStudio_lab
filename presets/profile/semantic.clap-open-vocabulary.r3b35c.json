@@ -1,9 +1,9 @@
 {
-  "schema": "ezstudio.gene-spec.v1",
-  "gene": {
+  "schema": "ezstudio.module-config.v1",
+  "module": {
     "id": "semantic.clap-open-vocabulary",
     "name": "CLAP Open Vocabulary",
-    "region": "profile",
+    "phase": "profile",
     "revision": "r3b35c-compat-v1"
   },
   "engine": {

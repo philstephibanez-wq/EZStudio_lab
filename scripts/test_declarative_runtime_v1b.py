@@ -16,10 +16,10 @@ from ezstudio.runtime.adapters.clap_zero_shot import (
     family_rows_from_logits,
 )
 from ezstudio.runtime.decision import apply_decision
-from ezstudio.runtime.gene_spec import load_gene_spec
+from ezstudio.runtime.module_config import load_module_config
 
-SPEC = ROOT / "adn/specs/profile/semantic.clap-open-vocabulary.r3b35c.json"
-WRAPPER = ROOT / "python/ezstudio/pipeline/profile/genes/semantic_clap_open_vocab.py"
+SPEC = ROOT / "presets/profile/semantic.clap-open-vocabulary.r3b35c.json"
+WRAPPER = ROOT / "python/ezstudio/pipeline/profile/modules/semantic_clap_open_vocab.py"
 LEGACY = ROOT / "python/ezstudio/pipeline/profile/semantic_clap.py"
 ADAPTER = ROOT / "python/ezstudio/runtime/adapters/clap_zero_shot.py"
 
@@ -31,9 +31,9 @@ ast.parse(WRAPPER.read_text(encoding="utf-8"))
 ast.parse(ADAPTER.read_text(encoding="utf-8"))
 ast.parse(LEGACY.read_text(encoding="utf-8"))
 
-spec = load_gene_spec(SPEC)
-assert spec.region == "profile"
-assert spec.gene_id == "semantic.clap-open-vocabulary"
+spec = load_module_config(SPEC)
+assert spec.phase == "profile"
+assert spec.module_id == "semantic.clap-open-vocabulary"
 assert spec.revision == "r3b35c-compat-v1"
 assert spec.engine_adapter == "clap-zero-shot"
 
@@ -56,7 +56,7 @@ assert "This music contains acoustic guitar." in prompts
 assert "The recording features choir." in prompts
 
 # Prove that scientific behavior is now data-driven: same engine primitive,
-# different Gene Spec decision => different selection, no engine code edit.
+# different Module Config decision => different selection, no engine code edit.
 import numpy as np
 toy_index = [("genre", "a"), ("genre", "b"), ("genre", "c")]
 rows = family_rows_from_logits(np.asarray([3.0, 2.0, 1.0]), toy_index, "genre")
@@ -77,7 +77,7 @@ assert "def clap_tags(" in legacy_text
 assert "TAXONOMY =" in legacy_text
 
 print("DECLARATIVE_RUNTIME_V1B_CONTRACT_OK")
-print("PROFILE CLAP is driven by R3B35C Gene Spec")
+print("PROFILE CLAP is driven by R3B35C Module Config")
 print("Legacy CLAP implementation remains available for equivalence checks")
 print("Changing compatible decision parameters requires no engine Python change")
 print("CHORDS/N baseline untouched")

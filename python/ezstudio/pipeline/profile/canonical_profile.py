@@ -99,8 +99,8 @@ def _per_engine_rows(semantic: dict[str, Any], family: str) -> dict[str, list[di
     if not isinstance(value, dict):
         return {}
     return {
-        str(gene): _as_rows(rows)
-        for gene, rows in value.items()
+        str(module): _as_rows(rows)
+        for module, rows in value.items()
         if isinstance(rows, list)
     }
 
@@ -125,14 +125,14 @@ def _clap_voice_evidence(
 ) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     engines = _per_engine_rows(semantic, "voice")
-    for gene, rows in engines.items():
+    for module, rows in engines.items():
         for rank, row in enumerate(rows, start=1):
             label = str(row.get("label") or "").strip()
             if label.casefold() not in labels:
                 continue
             evidence.append(
                 {
-                    "gene": gene,
+                    "module": module,
                     "family": "voice",
                     "label": label,
                     "rank": rank,
@@ -186,18 +186,18 @@ def _dimension(
     allow_single_high_rank_clap: bool = False,
 ) -> dict[str, Any]:
     direct = [item for item in evidence if item.get("role") == "direct"]
-    direct_genes: set[str] = set()
+    direct_modules: set[str] = set()
     accepted_audioset = False
     high_rank_clap = False
 
     for item in direct:
-        gene = str(item.get("gene") or "")
-        if gene:
-            direct_genes.add(gene)
+        module = str(item.get("module") or "")
+        if module:
+            direct_modules.add(module)
         if item.get("family") == "audioset":
             for source in item.get("sources") or []:
-                if isinstance(source, dict) and source.get("gene"):
-                    direct_genes.add(str(source["gene"]))
+                if isinstance(source, dict) and source.get("module"):
+                    direct_modules.add(str(source["module"]))
             accepted_audioset = accepted_audioset or bool(item.get("accepted"))
         if (
             item.get("family") == "voice"
@@ -206,7 +206,7 @@ def _dimension(
         ):
             high_rank_clap = True
 
-    if accepted_audioset or len(direct_genes) >= direct_engine_min:
+    if accepted_audioset or len(direct_modules) >= direct_engine_min:
         decision = "present"
     elif allow_single_high_rank_clap and high_rank_clap:
         decision = "possible"
@@ -217,7 +217,7 @@ def _dimension(
         "name": name,
         "decision": decision,
         "calibrated": False,
-        "engine_support": len(direct_genes),
+        "engine_support": len(direct_modules),
         "evidence": evidence,
     }
 
