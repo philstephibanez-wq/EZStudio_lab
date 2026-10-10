@@ -1,7 +1,7 @@
 from __future__ import annotations
 import ast, os, sys
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 PY=ROOT/"python"; PROFILE=PY/"ezstudio/pipeline/profile"
 sys.path[:0]=[str(PY),str(PROFILE)]
 from ezstudio.runtime.preset_loader import PresetLoader

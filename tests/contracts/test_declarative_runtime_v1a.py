@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "python" / "ezstudio" / "runtime"
 SPEC = ROOT / "presets" / "profile" / "semantic.clap-open-vocabulary.r3b35c.json"
 

@@ -9,6 +9,16 @@ import sys
 import time
 from pathlib import Path
 
+_EZSTUDIO_PROFILE_ROOT = Path(__file__).resolve().parent
+_EZSTUDIO_PYTHON_ROOT = Path(__file__).resolve().parents[3]
+
+for _bootstrap_path in (
+    _EZSTUDIO_PROFILE_ROOT,
+    _EZSTUDIO_PYTHON_ROOT,
+):
+    if str(_bootstrap_path) not in sys.path:
+        sys.path.insert(0, str(_bootstrap_path))
+
 import numpy as np
 
 from module import ModuleContext, ModuleConfig

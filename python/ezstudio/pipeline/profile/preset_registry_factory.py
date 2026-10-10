@@ -1,6 +1,17 @@
 from __future__ import annotations
+import sys
 import importlib, os
 from pathlib import Path
+
+_EZSTUDIO_PROFILE_ROOT = Path(__file__).resolve().parent
+_EZSTUDIO_PYTHON_ROOT = Path(__file__).resolve().parents[3]
+
+for _bootstrap_path in (
+    _EZSTUDIO_PROFILE_ROOT,
+    _EZSTUDIO_PYTHON_ROOT,
+):
+    if str(_bootstrap_path) not in sys.path:
+        sys.path.insert(0, str(_bootstrap_path))
 from typing import Any
 from module import ModuleConfig
 from module_registry import ModuleRegistry

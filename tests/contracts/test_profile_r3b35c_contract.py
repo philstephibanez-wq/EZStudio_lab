@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MODULE = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "canonical_profile.py"
 REGISTRY = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "module_registry.py"
 RUNNER = ROOT / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
