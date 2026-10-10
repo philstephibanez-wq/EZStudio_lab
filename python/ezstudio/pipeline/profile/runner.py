@@ -13,15 +13,8 @@ import numpy as np
 
 from module import ModuleContext, ModuleConfig
 from module_registry import ModuleRegistry
-from modules import descriptors_librosa
-from modules import embedding_mert
-from modules import meter_chords_shared
-from modules import rhythm_librosa
-from modules import semantic_clap_open_vocab
-from modules import semantic_panns
-from modules import semantic_passt
-from modules import tonal_ks
-from modules import tonal_madmom_key
+from preset_registry_factory import build_registry_from_phase_preset
+from ezstudio.runtime.preset_loader import PresetLoader
 
 R3B13_PROFILE_CONSOLIDATION = True
 R3B14_PROFILE_REPAIR = True
@@ -256,254 +249,6 @@ def _model_roots() -> tuple[Path, Path]:
     return ai_root, profile_root
 
 
-def build_module_registry(
-    ai_root: Path,
-    profile_root: Path,
-) -> ModuleRegistry:
-    return (
-        ModuleRegistry()
-        .add(
-            ModuleConfig(
-                module_id="rhythm.librosa-beat",
-                display_name="Librosa Beat Tracker",
-                family="rhythm",
-                order=10,
-                engine="librosa",
-                parameters={
-                    "mono": True,
-                    "analysis_sample_rate": 22050,
-                },
-            ),
-            rhythm_librosa.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="meter.chords-shared-r9",
-                display_name="CHORDS Shared Meter R9",
-                family="meter",
-                order=20,
-                engine="chords_metric_r9",
-                model_id="beat-this-final0",
-                model_path=str(
-                    Path(
-                        os.getenv(
-                            "EZSTUDIO_BEAT_THIS_CHECKPOINT",
-                            str(
-                                ai_root
-                                / "audio"
-                                / "rhythm"
-                                / "beat-this"
-                                / "beat_this-final0.ckpt"
-                            ),
-                        )
-                    )
-                ),
-                device="cuda:0",
-                thresholds={"confidence": 0.50},
-            ),
-            meter_chords_shared.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="tonal.krumhansl-schmuckler",
-                display_name="Krumhansl-Schmuckler Key",
-                family="tonal",
-                order=30,
-                engine="librosa-chroma-cqt+ks",
-                parameters={"chroma": "CQT"},
-            ),
-            tonal_ks.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="tonal.madmom-key-cnn-2017",
-                display_name="Madmom Key CNN 2017 Ensemble",
-                family="tonal",
-                order=31,
-                engine="madmom-infer",
-                model_id="CPJKU-key-cnn-2017-ensemble4",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "tonal"
-                    / "madmom-key-cnn"
-                    / "2017"
-                ),
-                device="cpu:numpy",
-            ),
-            tonal_madmom_key.run_2017,
-        )
-        .add(
-            ModuleConfig(
-                module_id="tonal.madmom-key-cnn-2018",
-                display_name="Madmom Genre-Agnostic Key CNN 2018",
-                family="tonal",
-                order=32,
-                engine="madmom-infer",
-                model_id="CPJKU-key-cnn-2018",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "tonal"
-                    / "madmom-key-cnn"
-                    / "2018"
-                    / "key_cnn.pkl"
-                ),
-                device="cpu:numpy",
-            ),
-            tonal_madmom_key.run_2018,
-        )
-        .add(
-            ModuleConfig(
-                module_id="descriptors.librosa-lowlevel",
-                display_name="Librosa Low-Level Descriptors",
-                family="descriptors",
-                order=40,
-                engine="librosa",
-                parameters={"rolloff_percent": 0.85},
-            ),
-            descriptors_librosa.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="semantic.clap-open-vocabulary",
-                display_name="CLAP Open Vocabulary",
-                family="semantic",
-                order=60,
-                engine="transformers.CLAP",
-                model_id="laion/clap-htsat-unfused",
-                model_path=str(
-                    profile_root / "clap-htsat-unfused"
-                ),
-                device="cuda:0",
-                parameters={
-                    "chunk_seconds": 10.0,
-                    "max_chunks": 8,
-                    "taxonomy": "ezstudio-r3b10",
-                    "batch_size": max(
-                        1,
-                        int(os.getenv("EZSTUDIO_CLAP_BATCH_SIZE", "2")),
-                    ),
-                    "cuda_batching": True,
-                },
-            ),
-            semantic_clap_open_vocab.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="embedding.mert-95m",
-                display_name="MERT Music Embedding 95M",
-                family="embedding",
-                order=70,
-                engine="transformers.MERT",
-                model_id="m-a-p/MERT-v1-95M",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "embeddings"
-                    / "mert"
-                    / "MERT-v1-95M"
-                ),
-                device="cuda:0",
-                parameters={
-                    "chunk_seconds": 10.0,
-                    "max_chunks": 6,
-                    "aggregation": "mean",
-                    "dtype": "float16",
-                    "batch_size": max(
-                        1,
-                        int(os.getenv("EZSTUDIO_MERT_BATCH_SIZE", "2")),
-                    ),
-                },
-            ),
-            embedding_mert.run_95m,
-        )
-        .add(
-            ModuleConfig(
-                module_id="embedding.mert-330m",
-                display_name="MERT Music Embedding 330M",
-                family="embedding",
-                order=71,
-                engine="transformers.MERT",
-                model_id="m-a-p/MERT-v1-330M",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "embeddings"
-                    / "mert"
-                    / "MERT-v1-330M"
-                ),
-                device="cuda:0",
-                parameters={
-                    "chunk_seconds": 10.0,
-                    "max_chunks": 6,
-                    "aggregation": "mean",
-                    "dtype": "float16",
-                    "batch_size": max(
-                        1,
-                        int(os.getenv("EZSTUDIO_MERT_BATCH_SIZE", "2")),
-                    ),
-                },
-            ),
-            embedding_mert.run_330m,
-        )
-        .add(
-            ModuleConfig(
-                module_id="semantic.panns-cnn14",
-                display_name="PANNs CNN14 AudioSet",
-                family="semantic",
-                order=80,
-                engine="panns-inference",
-                model_id="Cnn14_mAP=0.431",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "semantic"
-                    / "panns"
-                    / "Cnn14_mAP=0.431.pth"
-                ),
-                device="cuda:0",
-                parameters={
-                    "sample_rate": 32000,
-                    "chunk_seconds": 10.0,
-                    "max_chunks": 8,
-                },
-            ),
-            semantic_panns.run,
-        )
-        .add(
-            ModuleConfig(
-                module_id="semantic.passt-audioset",
-                display_name="PaSST AudioSet Transformer",
-                family="semantic",
-                order=81,
-                engine="hear21passt",
-                model_id="passt_s_swa_p16_128_ap476",
-                model_path=str(
-                    ai_root
-                    / "audio"
-                    / "semantic"
-                    / "passt"
-                    / "passt-s-f128-p16-s10-ap.476-swa.pt"
-                ),
-                device="cuda:0",
-                parameters={
-                    "sample_rate": 32000,
-                    "chunk_seconds": 10.0,
-                    "max_chunks": 8,
-                    "batch_size": max(
-                        1,
-                        int(os.getenv("EZSTUDIO_PASST_BATCH_SIZE", "2")),
-                    ),
-                },
-            ),
-            semantic_passt.run,
-        )
-    )
-
-
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True)
@@ -537,7 +282,15 @@ def main() -> int:
         ai_models_root=ai_root,
     )
 
-    module_registry = build_module_registry(ai_root, profile_root)
+    preset_loader = PresetLoader(Path(__file__).resolve().parents[4] / "presets")
+    loaded_phase_preset = preset_loader.load_phase(
+        "profile/profile-r3b35c-compat.v2b.json"
+    )
+    module_registry = build_registry_from_phase_preset(
+        loaded_phase_preset,
+        ai_models_root=ai_root,
+        profile_models_root=profile_root,
+    )
     module_registry_result = module_registry.run(
         context,
         progress=lambda percent, message: write_progress(
@@ -585,7 +338,10 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "modules-r3b35c-canonical-contract",
+            "profile_architecture": "declarative-phase-preset-v2b",
+            "profile_phase_preset": loaded_phase_preset.value.id,
+            "profile_phase_preset_revision": loaded_phase_preset.value.revision,
+            "profile_phase_preset_sha256": loaded_phase_preset.sha256,
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",

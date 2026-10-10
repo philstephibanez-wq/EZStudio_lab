@@ -1,0 +1,57 @@
+from __future__ import annotations
+import importlib, os
+from pathlib import Path
+from typing import Any
+from module import ModuleConfig
+from module_registry import ModuleRegistry
+from ezstudio.runtime.execution_plan import ExecutionPlanner
+from ezstudio.runtime.preset_loader import LoadedPreset, PhasePreset
+
+def _resolve(v:Any, roots:dict[str,Path])->Any:
+    if isinstance(v,list): return [_resolve(x,roots) for x in v]
+    if not isinstance(v,dict): return v
+    if "$env_int" in v:
+        n=str(v["$env_int"]); x=int(os.getenv(n,str(v.get("default",0))))
+        if "min" in v: x=max(int(v["min"]),x)
+        return x
+    if "$env_path" in v:
+        x=os.getenv(str(v["$env_path"]))
+        return x if x else _resolve(v["default"],roots)
+    if "$path" in v:
+        a=v["$path"]; r=roots.get(str(a[0]))
+        if r is None: raise ValueError(f"runtime_root_not_registered:{a[0]}")
+        return str(r.joinpath(*[str(x) for x in a[1:]]))
+    return {str(k):_resolve(x,roots) for k,x in v.items()}
+
+def _callable(ref:str):
+    if ":" not in ref: raise ValueError(f"callable_reference_invalid:{ref}")
+    mod,attr=ref.split(":",1)
+    if not (mod=="modules" or mod.startswith("modules.")):
+        raise ValueError(f"callable_module_not_allowed:{mod}")
+    fn=getattr(importlib.import_module(mod),attr,None)
+    if not callable(fn): raise ValueError(f"callable_not_found:{ref}")
+    return fn
+
+def build_registry_from_phase_preset(
+    loaded:LoadedPreset[PhasePreset], *,
+    ai_models_root:Path, profile_models_root:Path
+)->ModuleRegistry:
+    if loaded.value.phase!="profile":
+        raise ValueError(f"profile_phase_required:{loaded.value.phase}")
+    roots={"ai_models_root":ai_models_root.resolve(),
+           "profile_models_root":profile_models_root.resolve()}
+    reg=ModuleRegistry()
+    for row in ExecutionPlanner().build(loaded.value).modules:
+        m=row.module
+        ref=str(m.implementation.get("callable") or "")
+        reg.add(ModuleConfig(
+            module_id=m.id,display_name=m.display_name,family=m.family,
+            order=m.order,engine=m.engine,engine_version=m.engine_version,
+            model_id=m.model,
+            model_path=(str(_resolve(m.model_path,roots)) if m.model_path is not None else None),
+            device=m.device,
+            parameters=_resolve(m.parameters,roots),
+            thresholds=_resolve(m.thresholds,roots),
+            weights=_resolve(m.weights,roots),
+        ),_callable(ref))
+    return reg

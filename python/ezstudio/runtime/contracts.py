@@ -24,11 +24,19 @@ class ModulePreset:
     phase: str
     adapter: str
     engine: str
+    display_name: str
+    family: str
     model: str | None = None
+    model_path: Any = None
+    engine_version: str | None = None
     device: str | None = None
     order: int = 0
     inputs: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    thresholds: dict[str, Any] = field(default_factory=dict)
+    weights: dict[str, Any] = field(default_factory=dict)
     settings: dict[str, Any] = field(default_factory=dict)
+    implementation: dict[str, Any] = field(default_factory=dict)
     decision: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     diagnostics: dict[str, Any] = field(default_factory=dict)
@@ -49,11 +57,26 @@ class ModulePreset:
             phase=phase,
             adapter=_required_text(data.get("adapter"), "module.adapter"),
             engine=_required_text(data.get("engine"), "module.engine"),
+            display_name=_required_text(
+                data.get("display_name") or data.get("id"),
+                "module.display_name",
+            ),
+            family=_required_text(
+                data.get("family")
+                or str(data.get("id") or "").split(".", 1)[0],
+                "module.family",
+            ),
             model=(str(data["model"]).strip() if data.get("model") else None),
+            model_path=data.get("model_path"),
+            engine_version=(str(data["engine_version"]).strip() if data.get("engine_version") else None),
             device=(str(data["device"]).strip() if data.get("device") else None),
             order=order,
             inputs=dict(data.get("inputs") or {}),
+            parameters=dict(data.get("parameters") or {}),
+            thresholds=dict(data.get("thresholds") or {}),
+            weights=dict(data.get("weights") or {}),
             settings=dict(data.get("settings") or {}),
+            implementation=dict(data.get("implementation") or {}),
             decision=dict(data.get("decision") or {}),
             outputs=dict(data.get("outputs") or {}),
             diagnostics=dict(data.get("diagnostics") or {}),
