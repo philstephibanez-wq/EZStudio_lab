@@ -7,6 +7,7 @@ import os
 import platform
 import sys
 import time
+import uuid
 from pathlib import Path
 
 _EZSTUDIO_PROFILE_ROOT = Path(__file__).resolve().parent
@@ -43,21 +44,41 @@ R3B35B_CLAP_CHOIRS = True
 
 def write_progress(path: Path, percent: int, message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(
-            {
-                "percent": int(percent),
-                "progress": int(percent),
-                "message": message,
-                "updated_at": time.time(),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    payload = json.dumps(
+        {
+            "percent": int(percent),
+            "progress": int(percent),
+            "message": message,
+            "updated_at": time.time(),
+        },
+        ensure_ascii=False,
+        indent=2,
     )
-    tmp.replace(path)
+
+    tmp = path.with_name(
+        f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    )
+    tmp.write_text(payload, encoding="utf-8")
+
+    last_error: PermissionError | None = None
+    try:
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                if attempt >= 9:
+                    break
+                time.sleep(0.05 * (attempt + 1))
+        if last_error is not None:
+            raise last_error
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def sha256(path: Path) -> str:
