@@ -1162,6 +1162,50 @@ SQL;
         }
     }
 
+    public function reconcileStaleCancellingAnalysisJobsForSongs(
+        array $songIds,
+        int $staleSeconds = 60
+    ): array {
+        $songIds = array_values(array_unique(array_filter(
+            array_map('intval', $songIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        if ($songIds === []) {
+            return [];
+        }
+
+        $cutoff = gmdate('c', time() - max(30, $staleSeconds));
+        $marks = implode(',', array_fill(0, count($songIds), '?'));
+
+        $stmt = $this->pdo()->prepare(
+            "SELECT id
+             FROM analysis_jobs
+             WHERE song_id IN ($marks)
+               AND status='cancelling'
+               AND updated_at <= ?
+             ORDER BY id"
+        );
+
+        $i = 1;
+        foreach ($songIds as $songId) {
+            $stmt->bindValue($i++, $songId, \PDO::PARAM_INT);
+        }
+        $stmt->bindValue($i, $cutoff, \PDO::PARAM_STR);
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll();
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $job = $this->analysisJob($id);
+            if ($job === null || (string)$job['status'] !== 'cancelling') {
+                continue;
+            }
+            $this->markAnalysisJobCancelled($id);
+        }
+
+        return $rows;
+    }
+
     public function activeOrCancellingAnalysisJobsForSongs(array $songIds): array
     {
         $songIds = array_values(array_unique(array_map('intval', $songIds)));

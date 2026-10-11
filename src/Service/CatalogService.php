@@ -42,6 +42,11 @@ final class CatalogService
         }
 
         foreach ($groups as &$group) {
+            $this->db->reconcileStaleCancellingAnalysisJobsForSongs(
+                $group['song_ids'],
+                60
+            );
+
             foreach (self::ITEMS as $item) {
                 $group[$item] = $this->latestScientificState(
                     $group['song_ids'],
@@ -885,10 +890,14 @@ final class CatalogService
         }
 
         $viewState = (string)$run['state'];
-        if ($job !== null && (string)$job['status'] === 'cancelled') {
-            $viewState = 'cancelled';
-        } elseif ($job !== null && (string)$job['status'] === 'cancelling') {
-            $viewState = 'running';
+        if ($job !== null) {
+            $viewState = match ((string)$job['status']) {
+                'queued' => 'queued',
+                'running', 'cancelling' => 'running',
+                'cancelled' => 'cancelled',
+                'failed' => 'error',
+                default => $viewState,
+            };
         }
 
         return [
