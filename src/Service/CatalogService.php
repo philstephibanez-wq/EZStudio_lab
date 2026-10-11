@@ -833,7 +833,7 @@ final class CatalogService
 
         $marks = implode(',', array_fill(0, count($songIds), '?'));
         $stmt = $this->db->pdo()->prepare(
-            "SELECT id,public_id,state,created_at
+            "SELECT id,public_id,state,created_at,engine_version,model_name
              FROM scientific_runs
              WHERE song_id IN ($marks)
                AND item=?
@@ -853,15 +853,22 @@ final class CatalogService
         }
 
         $progress = null;
+        $version = trim((string)($run['engine_version'] ?? ''));
         if ($this->tableExists('scientific_run_labels')) {
             $stmt = $this->db->pdo()->prepare(
-                "SELECT value FROM scientific_run_labels
-                 WHERE run_id=? AND label='progress'"
+                "SELECT label,value FROM scientific_run_labels
+                 WHERE run_id=?
+                   AND label IN ('progress','preset_phase_revision')"
             );
             $stmt->execute([(int)$run['id']]);
-            $value = $stmt->fetchColumn();
-            if ($value !== false && is_numeric($value)) {
-                $progress = max(0, min(100, (int)$value));
+            foreach ($stmt->fetchAll() as $labelRow) {
+                $label = (string)$labelRow['label'];
+                $value = trim((string)$labelRow['value']);
+                if ($label === 'progress' && is_numeric($value)) {
+                    $progress = max(0, min(100, (int)$value));
+                } elseif ($label === 'preset_phase_revision' && $value !== '') {
+                    $version = $value;
+                }
             }
         }
 
@@ -893,6 +900,7 @@ final class CatalogService
             'legacy' => false,
             'job_id' => $job !== null ? (int)$job['id'] : null,
             'job_status' => $job !== null ? (string)$job['status'] : null,
+            'version' => $version !== '' ? $version : null,
         ];
     }
 
@@ -904,7 +912,7 @@ final class CatalogService
 
         $marks = implode(',', array_fill(0, count($songIds), '?'));
         $stmt = $this->db->pdo()->prepare(
-            "SELECT id,status,progress,created_at
+            "SELECT id,status,progress,created_at,engine_version
              FROM benchmark_runs
              WHERE song_id IN ($marks)
              ORDER BY id DESC LIMIT 1"
@@ -930,6 +938,7 @@ final class CatalogService
             'public_id' => 'legacy-'.(int)$run['id'],
             'created_at' => (string)$run['created_at'],
             'legacy' => true,
+            'version' => trim((string)($run['engine_version'] ?? '')) ?: null,
         ];
     }
 
@@ -944,6 +953,7 @@ final class CatalogService
             'legacy' => false,
             'job_id' => null,
             'job_status' => null,
+            'version' => null,
         ];
     }
 

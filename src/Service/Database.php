@@ -1000,6 +1000,40 @@ SQL;
         }
     }
 
+    public function activeAnalysisJobsForSongsKind(
+        array $songIds,
+        string $kind
+    ): array {
+        $songIds = array_values(array_unique(array_filter(
+            array_map('intval', $songIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        $kind = trim($kind);
+
+        if ($songIds === [] || $kind === '') {
+            return [];
+        }
+
+        $marks = implode(',', array_fill(0, count($songIds), '?'));
+        $stmt = $this->pdo()->prepare(
+            "SELECT id,song_id,kind,status,progress,scientific_run_id,updated_at
+             FROM analysis_jobs
+             WHERE song_id IN ($marks)
+               AND kind=?
+               AND status IN ('queued','running','cancelling')
+             ORDER BY id"
+        );
+
+        $i = 1;
+        foreach ($songIds as $songId) {
+            $stmt->bindValue($i++, $songId, \PDO::PARAM_INT);
+        }
+        $stmt->bindValue($i, $kind, \PDO::PARAM_STR);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
     public function requestAnalysisJobCancellation(int $id): array
     {
         $job = $this->analysisJob($id);

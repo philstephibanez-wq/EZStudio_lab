@@ -12,22 +12,25 @@ def _reference_hz(cents_from_a440: float) -> float:
     return 440.0 * (2.0 ** (float(cents_from_a440) / 1200.0))
 
 
-def _estimate_cents(y: np.ndarray, sr: int, resolution: float) -> float | None:
+def _estimate_cents_librosa(
+    y: np.ndarray,
+    sr: int,
+    resolution: float,
+) -> float | None:
     import librosa
 
     if y.size < max(2048, int(sr * 0.25)):
         return None
 
-    tuning_bins = librosa.estimate_tuning(
-        y=np.asarray(y, dtype=np.float32),
-        sr=int(sr),
-        resolution=float(resolution),
-        bins_per_octave=12,
-    )
-    value = float(tuning_bins) * 100.0
-    if not math.isfinite(value):
-        return None
-    return value
+    value = float(
+        librosa.estimate_tuning(
+            y=np.asarray(y, dtype=np.float32),
+            sr=int(sr),
+            resolution=float(resolution),
+            bins_per_octave=12,
+        )
+    ) * 100.0
+    return value if math.isfinite(value) else None
 
 
 def _chunk_slices(
@@ -53,7 +56,7 @@ def _chunk_slices(
     ]
 
 
-def _chunk_estimates_librosa(
+def _chunk_librosa(
     y: np.ndarray,
     sr: int,
     *,
@@ -68,145 +71,7 @@ def _chunk_estimates_librosa(
         chunk_seconds=chunk_seconds,
         max_chunks=max_chunks,
     ):
-        value = _estimate_cents(chunk, sr, resolution)
-        if value is not None:
-            values.append(value)
-    return values
-
-
-def _wrap_cents(value: float) -> float:
-    wrapped = ((float(value) + 50.0) % 100.0) - 50.0
-    if wrapped == -50.0:
-        return 50.0
-    return wrapped
-
-
-def _circular_cents(values: list[float], weights: list[float]) -> float | None:
-    if not values or len(values) != len(weights):
-        return None
-    angles = np.asarray(values, dtype=float) * (2.0 * np.pi / 100.0)
-    w = np.asarray(weights, dtype=float)
-    if not np.any(w > 0):
-        return None
-    x = float(np.sum(w * np.cos(angles)))
-    y = float(np.sum(w * np.sin(angles)))
-    if abs(x) < 1e-12 and abs(y) < 1e-12:
-        return None
-    angle = math.atan2(y, x)
-    return _wrap_cents(angle * 100.0 / (2.0 * np.pi))
-
-
-def _spectral_peak_offset_cents(
-    y: np.ndarray,
-    sr: int,
-    *,
-    n_fft: int,
-    hop_length: int,
-    fmin_hz: float,
-    fmax_hz: float,
-    peaks_per_frame: int,
-    minimum_peak_count: int,
-) -> float | None:
-    import librosa
-
-    if y.size < n_fft:
-        return None
-
-    spec = np.abs(
-        librosa.stft(
-            np.asarray(y, dtype=np.float32),
-            n_fft=int(n_fft),
-            hop_length=int(hop_length),
-            window="hann",
-            center=False,
-        )
-    )
-    if spec.size == 0 or spec.shape[0] < 3:
-        return None
-
-    freqs = librosa.fft_frequencies(sr=int(sr), n_fft=int(n_fft))
-    lo = int(np.searchsorted(freqs, float(fmin_hz), side="left"))
-    hi = int(np.searchsorted(freqs, float(fmax_hz), side="right"))
-    lo = max(1, lo)
-    hi = min(spec.shape[0] - 1, hi)
-    if hi <= lo:
-        return None
-
-    cents_values: list[float] = []
-    weights: list[float] = []
-    eps = 1e-12
-
-    for frame in range(spec.shape[1]):
-        mag = spec[:, frame]
-        region = mag[lo:hi]
-        if not np.any(region > 0):
-            continue
-
-        center = region
-        left = mag[lo - 1 : hi - 1]
-        right = mag[lo + 1 : hi + 1]
-        mask = (center > left) & (center >= right)
-        idx = np.flatnonzero(mask) + lo
-        if idx.size == 0:
-            continue
-
-        if idx.size > int(peaks_per_frame):
-            ranked = np.argsort(mag[idx])[-int(peaks_per_frame):]
-            idx = idx[ranked]
-
-        for k in idx.tolist():
-            alpha = math.log(float(mag[k - 1]) + eps)
-            beta = math.log(float(mag[k]) + eps)
-            gamma = math.log(float(mag[k + 1]) + eps)
-            denom = alpha - 2.0 * beta + gamma
-            delta = 0.0 if abs(denom) < 1e-12 else 0.5 * (alpha - gamma) / denom
-            delta = float(np.clip(delta, -0.5, 0.5))
-
-            freq = (float(k) + delta) * float(sr) / float(n_fft)
-            if freq <= 0.0:
-                continue
-
-            midi = 69.0 + 12.0 * math.log2(freq / 440.0)
-            cents = _wrap_cents((midi - round(midi)) * 100.0)
-            cents_values.append(cents)
-            weights.append(float(mag[k]) ** 0.5)
-
-    if len(cents_values) < int(minimum_peak_count):
-        return None
-
-    return _circular_cents(cents_values, weights)
-
-
-def _spectral_chunk_estimates(
-    y: np.ndarray,
-    sr: int,
-    *,
-    chunk_seconds: float,
-    max_chunks: int,
-    n_fft: int,
-    hop_length: int,
-    fmin_hz: float,
-    fmax_hz: float,
-    peaks_per_frame: int,
-    minimum_peak_count: int,
-) -> list[float]:
-    values = []
-    for chunk in _chunk_slices(
-        y,
-        sr,
-        chunk_seconds=chunk_seconds,
-        max_chunks=max_chunks,
-    ):
-        value = _spectral_peak_offset_cents(
-            chunk,
-            sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin_hz=fmin_hz,
-            fmax_hz=fmax_hz,
-            peaks_per_frame=peaks_per_frame,
-            minimum_peak_count=minimum_peak_count,
-        )
+        value = _estimate_cents_librosa(chunk, sr, resolution)
         if value is not None:
             values.append(value)
     return values
@@ -278,15 +143,162 @@ def _librosa_family(
     }
 
 
-def _cross_method_consensus(
+def _cqt_grid_score(
+    y: np.ndarray,
+    sr: int,
+    *,
+    offset_cents: float,
+    fmin_hz: float,
+    n_octaves: int,
+    hop_length: int,
+) -> float | None:
+    import librosa
+
+    if y.size < 4096:
+        return None
+
+    tuning_bins = float(offset_cents) / 100.0
+    cqt = np.abs(
+        librosa.cqt(
+            y=np.asarray(y, dtype=np.float32),
+            sr=int(sr),
+            hop_length=int(hop_length),
+            fmin=float(fmin_hz),
+            n_bins=int(n_octaves) * 12,
+            bins_per_octave=12,
+            tuning=tuning_bins,
+        )
+    )
+    if not np.any(cqt > 0):
+        return None
+
+    # Robust musical-grid score: reward concentration of harmonic energy
+    # on a semitone-aligned CQT bank while reducing loudness dependence.
+    frame_sum = np.sum(cqt, axis=0) + 1e-12
+    normalized = cqt / frame_sum
+    concentration = np.sum(normalized * normalized, axis=0)
+    frame_energy = np.sqrt(frame_sum)
+    return float(
+        np.sum(concentration * frame_energy)
+        / (np.sum(frame_energy) + 1e-12)
+    )
+
+
+def _cqt_detune_scan(
+    y: np.ndarray,
+    sr: int,
+    *,
+    offset_min_cents: int,
+    offset_max_cents: int,
+    offset_step_cents: int,
+    fmin_hz: float,
+    n_octaves: int,
+    hop_length: int,
+) -> dict[str, Any]:
+    offsets = list(
+        range(
+            int(offset_min_cents),
+            int(offset_max_cents) + 1,
+            int(offset_step_cents),
+        )
+    )
+    rows = []
+    for offset in offsets:
+        score = _cqt_grid_score(
+            y,
+            sr,
+            offset_cents=float(offset),
+            fmin_hz=fmin_hz,
+            n_octaves=n_octaves,
+            hop_length=hop_length,
+        )
+        if score is not None and math.isfinite(score):
+            rows.append(
+                {
+                    "cents": float(offset),
+                    "score": float(score),
+                }
+            )
+
+    if not rows:
+        return {
+            "available": False,
+            "cents": None,
+            "reference_hz": None,
+            "score_margin": None,
+            "candidates": [],
+        }
+
+    ranked = sorted(rows, key=lambda row: row["score"], reverse=True)
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    margin = (
+        float(best["score"] - second["score"])
+        if second is not None
+        else None
+    )
+    return {
+        "available": True,
+        "cents": round(float(best["cents"]), 4),
+        "reference_hz": round(_reference_hz(float(best["cents"])), 3),
+        "score": round(float(best["score"]), 8),
+        "score_margin": round(margin, 8) if margin is not None else None,
+        "candidates": [
+            {
+                "cents": round(float(row["cents"]), 4),
+                "score": round(float(row["score"]), 8),
+            }
+            for row in ranked[:10]
+        ],
+    }
+
+
+def _chunk_cqt_scan(
+    y: np.ndarray,
+    sr: int,
+    *,
+    chunk_seconds: float,
+    max_chunks: int,
+    offset_min_cents: int,
+    offset_max_cents: int,
+    offset_step_cents: int,
+    fmin_hz: float,
+    n_octaves: int,
+    hop_length: int,
+) -> list[float]:
+    values = []
+    for chunk in _chunk_slices(
+        y,
+        sr,
+        chunk_seconds=chunk_seconds,
+        max_chunks=max_chunks,
+    ):
+        result = _cqt_detune_scan(
+            chunk,
+            sr,
+            offset_min_cents=offset_min_cents,
+            offset_max_cents=offset_max_cents,
+            offset_step_cents=offset_step_cents,
+            fmin_hz=fmin_hz,
+            n_octaves=n_octaves,
+            hop_length=hop_length,
+        )
+        if result.get("available") and result.get("cents") is not None:
+            values.append(float(result["cents"]))
+    return values
+
+
+def _consensus_r2d(
     librosa_family: dict[str, Any],
-    spectral: dict[str, Any],
+    cqt_summary: dict[str, Any],
+    cqt_global: dict[str, Any],
     *,
     max_cross_method_disagreement_cents: float,
 ) -> dict[str, Any]:
     if (
         not librosa_family.get("available")
-        or not spectral.get("available")
+        or not cqt_summary.get("available")
+        or not cqt_global.get("available")
     ):
         return {
             "decision": "unavailable",
@@ -296,12 +308,12 @@ def _cross_method_consensus(
         }
 
     a = float(librosa_family["cents"])
-    b = float(spectral["median_cents"])
+    b = float(cqt_summary["median_cents"])
     disagreement = abs(a - b)
 
     if (
         not bool(librosa_family.get("stable"))
-        or not bool(spectral.get("stable"))
+        or not bool(cqt_summary.get("stable"))
         or disagreement > float(max_cross_method_disagreement_cents)
     ):
         return {
@@ -334,12 +346,12 @@ def run(
     max_chunks = int(p.get("max_chunks", 8))
     hpss_margin = float(p.get("hpss_margin", 1.0))
 
-    n_fft = int(p.get("spectral_n_fft", 8192))
-    hop_length = int(p.get("spectral_hop_length", 2048))
-    fmin_hz = float(p.get("spectral_fmin_hz", 55.0))
-    fmax_hz = float(p.get("spectral_fmax_hz", 4000.0))
-    peaks_per_frame = int(p.get("spectral_peaks_per_frame", 12))
-    minimum_peak_count = int(t.get("spectral_minimum_peak_count", 80))
+    offset_min = int(p.get("cqt_offset_min_cents", -30))
+    offset_max = int(p.get("cqt_offset_max_cents", 30))
+    offset_step = int(p.get("cqt_offset_step_cents", 2))
+    cqt_fmin = float(p.get("cqt_fmin_hz", 55.0))
+    cqt_octaves = int(p.get("cqt_n_octaves", 6))
+    cqt_hop = int(p.get("cqt_hop_length", 2048))
 
     min_chunks = int(t.get("minimum_chunk_support", 3))
     stable_mad = float(t.get("stable_mad_cents", 5.0))
@@ -352,34 +364,30 @@ def run(
         dtype=np.float32,
     )
 
-    master_global = _estimate_cents(master_y, int(context.sr), resolution)
-    harmonic_global = _estimate_cents(harmonic_y, int(context.sr), resolution)
+    master_global = _estimate_cents_librosa(
+        master_y,
+        int(context.sr),
+        resolution,
+    )
+    harmonic_global = _estimate_cents_librosa(
+        harmonic_y,
+        int(context.sr),
+        resolution,
+    )
 
-    master_values = _chunk_estimates_librosa(
+    master_values = _chunk_librosa(
         master_y,
         int(context.sr),
         chunk_seconds=chunk_seconds,
         max_chunks=max_chunks,
         resolution=resolution,
     )
-    harmonic_values = _chunk_estimates_librosa(
+    harmonic_values = _chunk_librosa(
         harmonic_y,
         int(context.sr),
         chunk_seconds=chunk_seconds,
         max_chunks=max_chunks,
         resolution=resolution,
-    )
-    spectral_values = _spectral_chunk_estimates(
-        harmonic_y,
-        int(context.sr),
-        chunk_seconds=chunk_seconds,
-        max_chunks=max_chunks,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        fmin_hz=fmin_hz,
-        fmax_hz=fmax_hz,
-        peaks_per_frame=peaks_per_frame,
-        minimum_peak_count=minimum_peak_count,
     )
 
     master = _summary(
@@ -390,11 +398,6 @@ def run(
     master["global_cents"] = (
         round(master_global, 4) if master_global is not None else None
     )
-    master["global_reference_hz"] = (
-        round(_reference_hz(master_global), 3)
-        if master_global is not None
-        else None
-    )
 
     harmonic = _summary(
         harmonic_values,
@@ -404,17 +407,6 @@ def run(
     harmonic["global_cents"] = (
         round(harmonic_global, 4) if harmonic_global is not None else None
     )
-    harmonic["global_reference_hz"] = (
-        round(_reference_hz(harmonic_global), 3)
-        if harmonic_global is not None
-        else None
-    )
-
-    spectral = _summary(
-        spectral_values,
-        minimum_chunk_support=min_chunks,
-        stable_mad_cents=stable_mad,
-    )
 
     librosa_family = _librosa_family(
         master_global,
@@ -423,9 +415,39 @@ def run(
         harmonic,
         max_internal_disagreement_cents=max_internal,
     )
-    consensus = _cross_method_consensus(
+
+    cqt_global = _cqt_detune_scan(
+        harmonic_y,
+        int(context.sr),
+        offset_min_cents=offset_min,
+        offset_max_cents=offset_max,
+        offset_step_cents=offset_step,
+        fmin_hz=cqt_fmin,
+        n_octaves=cqt_octaves,
+        hop_length=cqt_hop,
+    )
+    cqt_values = _chunk_cqt_scan(
+        harmonic_y,
+        int(context.sr),
+        chunk_seconds=chunk_seconds,
+        max_chunks=max_chunks,
+        offset_min_cents=offset_min,
+        offset_max_cents=offset_max,
+        offset_step_cents=offset_step,
+        fmin_hz=cqt_fmin,
+        n_octaves=cqt_octaves,
+        hop_length=cqt_hop,
+    )
+    cqt_summary = _summary(
+        cqt_values,
+        minimum_chunk_support=min_chunks,
+        stable_mad_cents=stable_mad,
+    )
+
+    consensus = _consensus_r2d(
         librosa_family,
-        spectral,
+        cqt_summary,
+        cqt_global,
         max_cross_method_disagreement_cents=max_cross,
     )
 
@@ -440,34 +462,40 @@ def run(
         "max_cross_method_disagreement_cents": max_cross,
         "methods": {
             "librosa_family": librosa_family,
-            "spectral_peak_offset": {
-                "available": spectral.get("available"),
-                "stable": spectral.get("stable"),
-                "reference_hz": spectral.get("reference_hz"),
-                "cents_from_a440": spectral.get("median_cents"),
-                "chunk_mad_cents": spectral.get("chunk_mad_cents"),
+            "cqt_detune_scan": {
+                "available": cqt_summary.get("available"),
+                "stable": cqt_summary.get("stable"),
+                "reference_hz": cqt_summary.get("reference_hz"),
+                "cents_from_a440": cqt_summary.get("median_cents"),
+                "chunk_mad_cents": cqt_summary.get("chunk_mad_cents"),
+                "global_cents": cqt_global.get("cents"),
+                "global_reference_hz": cqt_global.get("reference_hz"),
+                "global_score_margin": cqt_global.get("score_margin"),
             },
         },
         "confidence": None,
         "calibrated": False,
-        "source": "cross-method-tuning-consensus-r2c",
+        "source": "cross-method-tuning-consensus-r2d",
     }
 
     return {
         "raw": {
             "librosa_master": master,
             "librosa_harmonic": harmonic,
-            "spectral_peak_offset": spectral,
             "librosa_family": librosa_family,
+            "cqt_detune_scan": {
+                "global": cqt_global,
+                "chunks": cqt_summary,
+            },
             "consensus": consensus,
         },
         "normalized": normalized,
         "calibrated": {
             "status": "not_calibrated",
-            "method": "cross-method-tuning-consensus-r2c",
+            "method": "cross-method-tuning-consensus-r2d",
             "confidence": None,
         },
         "engine": {
-            "method": "librosa-estimate-tuning+spectral-peak-offset",
+            "method": "librosa-estimate-tuning+cqt-detune-scan",
         },
     }

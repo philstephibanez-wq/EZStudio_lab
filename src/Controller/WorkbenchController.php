@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Service\AnalysisRunRegistry;
 use App\Service\CatalogService;
 use App\Service\Database;
+use App\Service\ProfileDnaExecutionService;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -44,6 +45,120 @@ final class WorkbenchController extends AbstractController
         return $this->render('workbench/home.html.twig', [
             'songs' => $catalog->songs(),
         ]);
+    }
+
+    #[Route('/profile/analyze-all', name: 'profile_analyze_all', methods: ['POST'])]
+    public function analyzeAllProfiles(
+        WorkbenchCatalog $catalog,
+        AnalysisRunRegistry $runRegistry,
+        ProfileDnaExecutionService $execution,
+        Database $db,
+    ): Response {
+        $queued = 0;
+        $skippedActive = 0;
+        $skippedMissingSource = 0;
+
+        foreach ($catalog->songs() as $song) {
+            $songIds = array_values(array_map(
+                'intval',
+                $song['song_ids'] ?? [(int)$song['id']]
+            ));
+
+            if ($db->activeAnalysisJobsForSongsKind($songIds, 'profile') !== []) {
+                ++$skippedActive;
+                continue;
+            }
+
+            $source = $catalog->sourcePath($song);
+            if ($source === null) {
+                ++$skippedMissingSource;
+                continue;
+            }
+
+            $run = $runRegistry->createRun(
+                (int)$song['id'],
+                'profile',
+                [
+                    'name' => 'ezstudio-profile-modules',
+                    'version' => 'r3b31',
+                    'model' => 'multi-engine-profile-modules',
+                ],
+                [
+                    'audio_sha256' => (string)$song['audio_sha256'],
+                    'output_contract' => 'ezstudio.profile.v1',
+                    'automatic_next_stage' => false,
+                ],
+            );
+
+            $execution->queue(
+                (int)$run['id'],
+                $source,
+                (string)$song['audio_sha256']
+            );
+            ++$queued;
+        }
+
+        return new RedirectResponse(
+            $this->generateUrl('workbench_home', [
+                'profile_all_queued' => $queued,
+                'profile_all_skipped_active' => $skippedActive,
+                'profile_all_skipped_source' => $skippedMissingSource,
+            ])
+        );
+    }
+
+    #[Route('/profile/export-all.zip', name: 'profile_export_all_zip', methods: ['GET'])]
+    public function exportAllProfilesZip(): Response
+    {
+        $projectDir = dirname(__DIR__, 2);
+        $script = $projectDir
+            .DIRECTORY_SEPARATOR.'scripts'
+            .DIRECTORY_SEPARATOR.'export-profile-results.py';
+
+        if (!is_file($script)) {
+            return new Response('profile_exporter_missing', 500);
+        }
+
+        $python = trim((string)(
+            getenv('BENCH_PYTHON')
+            ?: 'H:\\Python\\pythoncore-3.14-64\\python.exe'
+        ));
+        if ($python === '' || !is_file($python)) {
+            return new Response('profile_export_python_missing', 500);
+        }
+
+        $tempRoot = is_dir('H:\\temp') ? 'H:\\temp' : sys_get_temp_dir();
+        $output = $tempRoot
+            .DIRECTORY_SEPARATOR
+            .'EZStudio_PROFILE_ALL_'
+            .gmdate('Ymd_His')
+            .'_'.bin2hex(random_bytes(3))
+            .'.zip';
+
+        $command = escapeshellarg($python)
+            .' '.escapeshellarg($script)
+            .' --repo '.escapeshellarg($projectDir)
+            .' --output '.escapeshellarg($output)
+            .' 2>&1';
+
+        $lines = [];
+        $exitCode = 0;
+        exec($command, $lines, $exitCode);
+
+        if ($exitCode !== 0 || !is_file($output)) {
+            return new Response(
+                "profile_export_failed\n".implode("\n", $lines),
+                500,
+                ['Content-Type' => 'text/plain; charset=UTF-8']
+            );
+        }
+
+        $response = $this->file($output, basename($output));
+        // Explicit ZIP MIME avoids Symfony File::getMimeType(), which requires
+        // the optional symfony/mime component.
+        $response->headers->set('Content-Type', 'application/zip');
+        $response->deleteFileAfterSend(true);
+        return $response;
     }
 
     #[Route('/analysis/jobs/{id<\d+>}/cancel', name: 'analysis_job_cancel', methods: ['POST'])]

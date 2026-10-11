@@ -77,9 +77,10 @@ function initPerformance(){
  function tick(){if(stopped)return;if(document.hidden){schedule();return;}$.ajax({url:url,method:'GET',dataType:'json',cache:false}).done(d=>{if(!d||!d.available){$r.find('[data-perf-status]').text('Télémétrie indisponible').removeClass('perf-live-on');return;}render(d);}).fail(x=>$r.find('[data-perf-status]').text('Télémétrie indisponible'+(x.status?' · HTTP '+x.status:'')).removeClass('perf-live-on')).always(schedule);}
  $(document).off('visibilitychange.ezs').on('visibilitychange.ezs',()=>{if(!document.hidden&&!stopped)tick();});$(window).off('pagehide.ezs').on('pagehide.ezs',()=>{stopped=true;clearTimeout(timer);});rehydrate();if(!samples.length)$r.find('[data-perf-status]').text('Connexion télémétrie…');tick();
 }
-function applyCatalogHtml(html){const $r=$('#catalog-live-region');if(!$r.length)return false;const nodes=$.parseHTML(String(html||''),document,true)||[],$wrap=$('<div>').append(nodes),$next=$wrap.find('#catalog-live-region').first();if(!$next.length)return false;$r.html($next.html());return true;}
-function refreshCatalog(){const $r=$('#catalog-live-region');if(!$r.length)return;$.ajax({url:window.location.href,method:'GET',dataType:'html',cache:false}).done(html=>{if(applyCatalogHtml(html))scheduleCatalog();});}
-function scheduleCatalog(){clearTimeout(window.ezstudioCatalogTimer);if($('#catalog-live-region [data-analysis-active="1"]').length)window.ezstudioCatalogTimer=setTimeout(refreshCatalog,2500);}
+function catalogRegion(){return $('#catalog-live-phase').first();}
+function applyCatalogHtml(html){const $r=catalogRegion();if(!$r.length)return false;const nodes=$.parseHTML(String(html||''),document,true)||[],$wrap=$('<div>').append(nodes),$next=$wrap.find('#catalog-live-phase').first();if(!$next.length)return false;$r.html($next.html());return true;}
+function refreshCatalog(){const $r=catalogRegion();if(!$r.length)return;$.ajax({url:window.location.href,method:'GET',dataType:'html',cache:false}).done(html=>{if(applyCatalogHtml(html))scheduleCatalog();});}
+function scheduleCatalog(){clearTimeout(window.ezstudioCatalogTimer);if($('#catalog-live-phase [data-analysis-active="1"]').length)window.ezstudioCatalogTimer=setTimeout(refreshCatalog,2500);}
 function initCatalog(){
  const ns='.ezstudioCatalog';
  $(document).off(ns);
