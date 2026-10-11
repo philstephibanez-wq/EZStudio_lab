@@ -458,6 +458,236 @@ def _build_choir_consensus(
     }
 
 
+
+def _record_by_id(
+    records: list[dict[str, Any]],
+    module_id: str,
+) -> dict[str, Any] | None:
+    for record in records:
+        if str(record.get("id") or "") == module_id:
+            return record
+    return None
+
+
+def _canonical_metric_unit(signature: str) -> str | None:
+    try:
+        numerator_text, denominator_text = signature.split("/", 1)
+        numerator = int(numerator_text)
+        denominator = int(denominator_text)
+    except Exception:
+        return None
+
+    if denominator == 4:
+        return "quarter"
+    if denominator == 8 and numerator in {6, 9, 12}:
+        return "dotted_quarter"
+    return None
+
+
+def _tempo_conversion(
+    detected_unit: str,
+    primary_unit: str,
+) -> float | None:
+    quarter_lengths = {
+        "half": 2.0,
+        "quarter": 1.0,
+        "eighth": 0.5,
+        "dotted_quarter": 1.5,
+    }
+    detected = quarter_lengths.get(detected_unit)
+    primary = quarter_lengths.get(primary_unit)
+    if detected is None or primary is None or primary <= 0.0:
+        return None
+    # detected_bpm / primary_bpm = primary_duration / detected_duration
+    return primary / detected
+
+
+def _build_tempo_metric_consensus(
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    rhythm = _record_by_id(records, "rhythm.librosa-beat")
+    meter = _record_by_id(records, "meter.chords-shared-r9")
+
+    unavailable = {
+        "decision": "unavailable",
+        "primary": None,
+        "confidence": None,
+        "calibrated": False,
+    }
+    if not isinstance(rhythm, dict) or not isinstance(meter, dict):
+        return unavailable
+    if rhythm.get("status") != "ok" or meter.get("status") != "ok":
+        return unavailable
+
+    rhythm_n = (
+        rhythm.get("normalized")
+        if isinstance(rhythm.get("normalized"), dict)
+        else {}
+    )
+    meter_n = (
+        meter.get("normalized")
+        if isinstance(meter.get("normalized"), dict)
+        else {}
+    )
+    try:
+        tracker_bpm = float(rhythm_n.get("bpm") or 0.0)
+    except (TypeError, ValueError):
+        tracker_bpm = 0.0
+
+    signature = str(
+        meter_n.get("label")
+        or meter_n.get("suggested_label")
+        or ""
+    ).strip()
+
+    metric = (
+        meter_n.get("metric_level")
+        if isinstance(meter_n.get("metric_level"), dict)
+        else {}
+    )
+    candidates = [
+        row for row in (metric.get("candidates") or [])
+        if isinstance(row, dict)
+    ]
+    candidates.sort(
+        key=lambda row: (
+            -float(row.get("score") or -1e9),
+            -float(row.get("phase_margin") or -1e9),
+            str(row.get("beat_unit") or ""),
+        )
+    )
+
+    thresholds = (
+        meter.get("thresholds")
+        if isinstance(meter.get("thresholds"), dict)
+        else {}
+    )
+    score_margin_threshold = float(
+        thresholds.get("metric_level_score_margin", 0.02)
+    )
+    min_score = float(
+        thresholds.get("metric_level_min_score", 0.0)
+    )
+
+    if tracker_bpm <= 0.0 or not signature or not candidates:
+        return {
+            **unavailable,
+            "signature": signature or None,
+            "tracker_bpm": tracker_bpm or None,
+            "candidates": candidates,
+        }
+
+    best = candidates[0]
+    second_score = (
+        float(candidates[1].get("score") or -1e9)
+        if len(candidates) > 1
+        else -1e9
+    )
+    best_score = float(best.get("score") or -1e9)
+    score_margin = (
+        best_score - second_score
+        if len(candidates) > 1
+        else float("inf")
+    )
+
+    accepted = (
+        best_score >= min_score
+        and score_margin >= score_margin_threshold
+    )
+
+    detected_unit = str(best.get("beat_unit") or "")
+    primary_unit = _canonical_metric_unit(signature)
+
+    if not accepted or primary_unit is None:
+        return {
+            "decision": "ambiguous",
+            "signature": signature,
+            "tracker_bpm": round(tracker_bpm, 3),
+            "detected_grid": {
+                "bpm": round(tracker_bpm, 3),
+                "beat_unit": detected_unit or None,
+            },
+            "primary": None,
+            "relationship": None,
+            "confidence": None,
+            "calibrated": False,
+            "score_margin": (
+                round(score_margin, 6)
+                if score_margin != float("inf")
+                else None
+            ),
+            "score_margin_threshold": score_margin_threshold,
+            "metric_level_min_score": min_score,
+            "candidates": candidates,
+            "source": metric.get("source"),
+        }
+
+    conversion = _tempo_conversion(detected_unit, primary_unit)
+    if conversion is None:
+        return {
+            "decision": "ambiguous",
+            "signature": signature,
+            "tracker_bpm": round(tracker_bpm, 3),
+            "primary": None,
+            "confidence": None,
+            "calibrated": False,
+            "candidates": candidates,
+        }
+
+    primary_bpm = tracker_bpm / conversion
+    ratio = tracker_bpm / primary_bpm if primary_bpm else 0.0
+
+    if abs(ratio - 2.0) <= 0.03:
+        relationship = "double_grid_to_primary"
+    elif abs(ratio - 0.5) <= 0.03:
+        relationship = "half_grid_to_primary"
+    elif abs(ratio - 3.0) <= 0.05:
+        relationship = "triple_grid_to_primary"
+    else:
+        relationship = "same_level"
+
+    alternatives = []
+    if detected_unit != primary_unit:
+        alternatives.append(
+            {
+                "bpm": round(tracker_bpm, 3),
+                "beat_unit": detected_unit,
+                "relationship": relationship,
+                "source": "detected_grid",
+            }
+        )
+
+    return {
+        "decision": "accepted",
+        "signature": signature,
+        "tracker_bpm": round(tracker_bpm, 3),
+        "detected_grid": {
+            "bpm": round(tracker_bpm, 3),
+            "beat_unit": detected_unit,
+        },
+        "primary": {
+            "bpm": round(primary_bpm, 3),
+            "beat_unit": primary_unit,
+        },
+        "alternatives": alternatives,
+        "relationship": relationship,
+        "confidence": None,
+        "calibrated": False,
+        "confidence_note": (
+            "Metric-level decision is evidence-based but not yet calibrated "
+            "against the PROFILE validation corpus."
+        ),
+        "score_margin": (
+            round(score_margin, 6)
+            if score_margin != float("inf")
+            else None
+        ),
+        "score_margin_threshold": score_margin_threshold,
+        "metric_level_min_score": min_score,
+        "candidates": candidates,
+        "source": metric.get("source"),
+    }
+
 def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
     semantic_records = [
         record
@@ -761,6 +991,18 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     instrumentation = _build_instrumentation_consensus(records)
     choirs = _build_choir_consensus(records)
+    tempo_metric = _build_tempo_metric_consensus(records)
+    tuning_record = _record_by_id(
+        records,
+        "tuning.librosa-reference-pitch",
+    )
+    tuning = (
+        tuning_record.get("normalized")
+        if isinstance(tuning_record, dict)
+        and tuning_record.get("status") == "ok"
+        and isinstance(tuning_record.get("normalized"), dict)
+        else {}
+    )
 
     return {
         "semantic": semantic,
@@ -768,6 +1010,8 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         "vocal_profile": build_vocal_profile(semantic),
         "instrumentation": instrumentation,
         "choirs": choirs,
+        "tempo_metric": tempo_metric,
+        "tuning": tuning,
         "tonal": tonal,
         "embedding": {
             "policy": "preserve-each-representation-no-vector-fusion",

@@ -98,6 +98,10 @@ def _legacy_projection(
         module_registry_result,
         "descriptors.librosa-lowlevel",
     )
+    tuning = _module_by_id(
+        module_registry_result,
+        "tuning.librosa-reference-pitch",
+    )
     clap = _module_by_id(
         module_registry_result,
         "semantic.clap-open-vocabulary",
@@ -106,6 +110,12 @@ def _legacy_projection(
     rhythm_n = _normalized(rhythm)
     meter_n = _normalized(meter)
     descriptors_n = _normalized(descriptors)
+    tuning_n = _normalized(tuning)
+    tempo_metric = (
+        (module_registry_result.get("consensus") or {})
+        .get("tempo_metric")
+        or {}
+    )
 
     tonal_label = tonal_consensus.get("label")
     tonic = None
@@ -136,9 +146,11 @@ def _legacy_projection(
             "bpm": rhythm_n.get("bpm", 0.0),
             "confidence": rhythm_n.get("confidence"),
             "source": rhythm_n.get("source", "librosa.beat"),
+            "metric_level": tempo_metric,
         },
         "time_signature": meter_n,
         "key": tonal_n,
+        "tuning": tuning_n,
         "dynamics": descriptors_n.get("dynamics") or {},
         "spectral": descriptors_n.get("spectral") or {},
     }
@@ -230,6 +242,8 @@ def _profile_view(module_registry_result: dict) -> dict:
         "counts": counts,
         "modules": module_rows,
         "tonal": consensus.get("tonal") or {},
+        "tempo_metric": consensus.get("tempo_metric") or {},
+        "tuning": consensus.get("tuning") or {},
         "genre_hierarchy": consensus.get("genre_hierarchy") or {},
         "vocal_profile": consensus.get("vocal_profile") or {},
         "instrumentation": consensus.get("instrumentation") or {},

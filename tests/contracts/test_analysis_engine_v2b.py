@@ -24,21 +24,45 @@ finally:
     for k,v in saved.items():
         if v is None: os.environ.pop(k,None)
         else: os.environ[k]=v
+
 entries=list(reg._entries)
-assert len(entries)==11
+assert len(entries)==12
 cfg={c.module_id:c for c,_ in entries}
 ids=[c.module_id for c,_ in entries]
-assert ids==["rhythm.librosa-beat","meter.chords-shared-r9","tonal.krumhansl-schmuckler","tonal.madmom-key-cnn-2017","tonal.madmom-key-cnn-2018","descriptors.librosa-lowlevel","semantic.clap-open-vocabulary","embedding.mert-95m","embedding.mert-330m","semantic.panns-cnn14","semantic.passt-audioset"]
+assert ids==[
+    "rhythm.librosa-beat",
+    "meter.chords-shared-r9",
+    "tonal.krumhansl-schmuckler",
+    "tonal.madmom-key-cnn-2017",
+    "tonal.madmom-key-cnn-2018",
+    "descriptors.librosa-lowlevel",
+    "tuning.librosa-reference-pitch",
+    "semantic.clap-open-vocabulary",
+    "embedding.mert-95m",
+    "embedding.mert-330m",
+    "semantic.panns-cnn14",
+    "semantic.passt-audioset",
+]
 assert cfg["rhythm.librosa-beat"].parameters=={"mono":True,"analysis_sample_rate":22050}
-assert cfg["meter.chords-shared-r9"].thresholds=={"confidence":0.5}
+
+meter_thresholds=cfg["meter.chords-shared-r9"].thresholds
+assert meter_thresholds["confidence"]==0.5
+assert meter_thresholds["metric_level_score_margin"]==0.02
+assert meter_thresholds["metric_level_min_score"]==0.0
+
+assert cfg["tuning.librosa-reference-pitch"].parameters["resolution_semitones"]==0.01
+assert cfg["tuning.librosa-reference-pitch"].thresholds["stable_mad_cents"]==5.0
+
 assert cfg["semantic.clap-open-vocabulary"].parameters["batch_size"]==2
 assert cfg["embedding.mert-95m"].parameters["batch_size"]==2
 assert cfg["semantic.passt-audioset"].parameters["batch_size"]==2
 assert loaded.value.settings["equivalence_baseline_run"]==78
 assert len(loaded.sha256)==64
+
 print("ANALYSIS_ENGINE_V2B_CONTRACT_OK")
-print("11 PROFILE modules resolved from PhasePreset")
+print("12 PROFILE modules resolved from PhasePreset")
 print("runner.py contains no hardcoded registry construction")
-print("R3B35C parameters, models, devices and callables preserved")
+print("R3B35C baseline plus declarative PROFILE extensions preserved")
+print("Metric-level and tuning settings are declarative")
 print("GPU equivalence baseline: run #78")
 print("CHORDS/N baseline untouched")

@@ -7,6 +7,70 @@ from pathlib import Path
 import numpy as np
 
 
+
+def _metric_level_periods(signature: str) -> list[tuple[str, int]]:
+    try:
+        numerator_text, denominator_text = signature.split("/", 1)
+        numerator = int(numerator_text)
+        denominator = int(denominator_text)
+    except Exception:
+        return []
+
+    if denominator == 4:
+        rows: list[tuple[str, int]] = [
+            ("quarter", numerator),
+            ("eighth", numerator * 2),
+        ]
+        if numerator >= 4 and numerator % 2 == 0:
+            rows.append(("half", numerator // 2))
+        return rows
+
+    if denominator == 8 and numerator in {6, 9, 12}:
+        return [
+            ("dotted_quarter", numerator // 3),
+            ("eighth", numerator),
+        ]
+
+    return []
+
+
+def _metric_level_candidates(
+    signature: str,
+    downbeat_activation: np.ndarray,
+    choose_phase_fn,
+) -> dict:
+    values = np.asarray(downbeat_activation, dtype=float)
+    candidates = []
+    for beat_unit, events_per_bar in _metric_level_periods(signature):
+        if events_per_bar < 2:
+            continue
+        if len(values) < events_per_bar * 2:
+            continue
+        phase = choose_phase_fn(values, events_per_bar)
+        candidates.append(
+            {
+                "beat_unit": beat_unit,
+                "events_per_bar": int(events_per_bar),
+                "score": round(float(phase["score"]), 6),
+                "phase": int(phase["phase"]),
+                "phase_margin": round(float(phase["margin"]), 6),
+            }
+        )
+
+    candidates.sort(
+        key=lambda row: (
+            -float(row["score"]),
+            -float(row["phase_margin"]),
+            str(row["beat_unit"]),
+        )
+    )
+    return {
+        "source": "beat-this-downbeat-periodicity",
+        "signature": signature,
+        "candidates": candidates,
+        "calibrated": False,
+    }
+
 def estimate_meter_from_chords_engine(
     y: np.ndarray,
     sr: int,
@@ -41,6 +105,7 @@ def estimate_meter_from_chords_engine(
         bass_feature,
         harmonic_novelty,
         auto_signature,
+        choose_phase,
         refine_duple_signature_with_beat_this,
     )
 
@@ -114,6 +179,12 @@ def estimate_meter_from_chords_engine(
         bt,
     )
 
+    metric_level_candidates = _metric_level_candidates(
+        signature,
+        bt,
+        choose_phase,
+    )
+
     confidence = float(meter.get("confidence") or 0.0)
     confident = confidence >= float(confidence_threshold)
     numerator = int(signature.split("/", 1)[0])
@@ -133,6 +204,7 @@ def estimate_meter_from_chords_engine(
         },
         "initial_signature": initial_signature,
         "duple_refinement": refinement,
+        "metric_level": metric_level_candidates,
         "source": "chords_metric_r9",
         "beat_this_checkpoint": str(checkpoint),
         "tempo_bpm": float(np.asarray(tempo_arr).squeeze()),

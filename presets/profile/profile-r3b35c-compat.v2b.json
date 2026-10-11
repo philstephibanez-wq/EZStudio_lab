@@ -39,7 +39,9 @@
       "order": 20,
       "parameters": {},
       "thresholds": {
-        "confidence": 0.5
+        "confidence": 0.5,
+        "metric_level_score_margin": 0.02,
+        "metric_level_min_score": 0.0
       },
       "weights": {},
       "implementation": {
@@ -149,6 +151,29 @@
       "weights": {},
       "implementation": {
         "callable": "modules.descriptors_librosa:run"
+      }
+    },
+    {
+      "id": "tuning.librosa-reference-pitch",
+      "display_name": "Librosa Reference Pitch",
+      "family": "tuning",
+      "revision": "r2",
+      "phase": "profile",
+      "adapter": "python-callable",
+      "engine": "librosa",
+      "order": 45,
+      "parameters": {
+        "resolution_semitones": 0.01,
+        "chunk_seconds": 12.0,
+        "max_chunks": 8
+      },
+      "thresholds": {
+        "minimum_chunk_support": 3,
+        "stable_mad_cents": 5.0
+      },
+      "weights": {},
+      "implementation": {
+        "callable": "modules.tuning_librosa:run"
       }
     },
     {

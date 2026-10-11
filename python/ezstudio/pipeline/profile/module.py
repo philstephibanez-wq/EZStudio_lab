@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import inspect
 import platform
 import time
 from dataclasses import dataclass, field
@@ -109,7 +110,11 @@ def run_module(
     perf_probe.start()
 
     try:
-        output = fn(context) or {}
+        parameters = inspect.signature(fn).parameters
+        if len(parameters) >= 2:
+            output = fn(context, config) or {}
+        else:
+            output = fn(context) or {}
         record["raw"] = output.get("raw")
         record["normalized"] = output.get("normalized", output.get("raw"))
         if isinstance(output.get("calibrated"), dict):
