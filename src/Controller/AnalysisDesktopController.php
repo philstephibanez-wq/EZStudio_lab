@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\Database;
+use App\Service\DistributedAnalysisLeaseService;
 use App\Service\ChordsDnaExecutionService;
 use App\Service\LabAnalysisTokenGuard;
 use App\Service\ProfileDnaExecutionService;
@@ -21,6 +22,7 @@ final class AnalysisDesktopController extends AbstractController
     public function __construct(
         private readonly LabAnalysisTokenGuard $guard,
         private readonly Database $db,
+        private readonly DistributedAnalysisLeaseService $distributed,
         private readonly ProfileDnaExecutionService $profileDna,
         private readonly ChordsDnaExecutionService $chordsDna,
         private readonly StemsDnaExecutionService $stemsDna,
@@ -121,4 +123,204 @@ final class AnalysisDesktopController extends AbstractController
         $this->chordsDna->failFromJob($id,$error);
         return $this->json(['job_id'=>$id,'status'=>'failed']);
     }
+
+    #[Route('/distributed/workers/heartbeat', name: 'lab_internal_distributed_worker_heartbeat', methods: ['POST'])]
+    public function distributedWorkerHeartbeat(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        try {
+            $result = $this->distributed->heartbeatWorker(
+                (string)($payload['worker_id'] ?? ''),
+                is_array($payload['capabilities'] ?? null) ? $payload['capabilities'] : [],
+                (string)($payload['state'] ?? 'idle')
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+        return $this->json($result);
+    }
+
+    #[Route('/distributed/jobs/eligible', name: 'lab_internal_distributed_jobs_eligible', methods: ['POST'])]
+    public function distributedEligibleJobs(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        try {
+            $jobs = $this->distributed->eligibleJobs(
+                (string)($payload['worker_id'] ?? ''),
+                max(1, min(500, (int)($payload['limit'] ?? 100)))
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+        return $this->json([
+            'schema_version' => 'ezstudio.distributed.jobs.v1',
+            'jobs' => $jobs,
+        ]);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/claim', name: 'lab_internal_distributed_job_claim', methods: ['POST'])]
+    public function distributedClaim(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        try {
+            $context = $this->distributed->claim(
+                $id,
+                (string)($payload['worker_id'] ?? ''),
+                (int)($payload['lease_seconds'] ?? 60)
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+        return $this->json($context);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/lease-heartbeat', name: 'lab_internal_distributed_job_lease_heartbeat', methods: ['POST'])]
+    public function distributedLeaseHeartbeat(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        try {
+            $result = $this->distributed->renewLease(
+                $id,
+                (string)($payload['worker_id'] ?? ''),
+                (string)($payload['lease_token'] ?? ''),
+                (int)($payload['lease_seconds'] ?? 60)
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+        return $this->json($result);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/context', name: 'lab_internal_distributed_job_context', methods: ['POST'])]
+    public function distributedContext(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        try {
+            $context = $this->distributed->context(
+                $id,
+                (string)($payload['worker_id'] ?? ''),
+                (string)($payload['lease_token'] ?? '')
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+        return $this->json($context);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/progress', name: 'lab_internal_distributed_job_progress', methods: ['POST'])]
+    public function distributedProgress(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        $value = filter_var(
+            $payload['progress'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 0, 'max_range' => 100]]
+        );
+        if ($value === false) {
+            return $this->json(['error' => 'progress_must_be_0_100'], 422);
+        }
+
+        try {
+            $this->distributed->assertLease(
+                $id,
+                (string)($payload['worker_id'] ?? ''),
+                (string)($payload['lease_token'] ?? '')
+            );
+            if (!$this->db->updateAnalysisJobProgress($id, (int)$value)) {
+                return $this->json(['error' => 'job_not_running'], 409);
+            }
+            $this->profileDna->progressFromJob($id, (int)$value);
+            $this->stemsDna->progressFromJob($id, (int)$value);
+            $this->chordsDna->progressFromJob($id, (int)$value);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+
+        return $this->json([
+            'job_id' => $id,
+            'status' => 'running',
+            'progress' => (int)$value,
+        ]);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/complete', name: 'lab_internal_distributed_job_complete', methods: ['POST'])]
+    public function distributedComplete(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        $workerId = (string)($payload['worker_id'] ?? '');
+        $leaseToken = (string)($payload['lease_token'] ?? '');
+
+        try {
+            $this->distributed->assertLease($id, $workerId, $leaseToken);
+            $this->db->completeAnalysisJob($id);
+            $this->profileDna->completeFromJob($id);
+            $this->stemsDna->completeFromJob($id);
+            $this->chordsDna->completeFromJob($id);
+            $this->distributed->releaseLease($id, $workerId, $leaseToken);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+
+        return $this->json([
+            'job_id' => $id,
+            'status' => 'completed',
+            'progress' => 100,
+        ]);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/cancelled', name: 'lab_internal_distributed_job_cancelled', methods: ['POST'])]
+    public function distributedCancelled(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        $workerId = (string)($payload['worker_id'] ?? '');
+        $leaseToken = (string)($payload['lease_token'] ?? '');
+
+        try {
+            $this->distributed->assertLease($id, $workerId, $leaseToken);
+            $this->db->markAnalysisJobCancelled($id);
+            $this->distributed->releaseLease($id, $workerId, $leaseToken);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+
+        return $this->json([
+            'job_id' => $id,
+            'status' => 'cancelled',
+        ]);
+    }
+
+    #[Route('/distributed/jobs/{id<\d+>}/fail', name: 'lab_internal_distributed_job_fail', methods: ['POST'])]
+    public function distributedFail(int $id, Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $payload = $request->toArray();
+        $workerId = (string)($payload['worker_id'] ?? '');
+        $leaseToken = (string)($payload['lease_token'] ?? '');
+        $error = trim((string)($payload['error'] ?? 'distributed_worker_job_failed'));
+
+        try {
+            $this->distributed->assertLease($id, $workerId, $leaseToken);
+            $this->db->failAnalysisJob($id, $error);
+            $this->profileDna->failFromJob($id, $error);
+            $this->stemsDna->failFromJob($id, $error);
+            $this->chordsDna->failFromJob($id, $error);
+            $this->distributed->releaseLease($id, $workerId, $leaseToken);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
+        }
+
+        return $this->json([
+            'job_id' => $id,
+            'status' => 'failed',
+        ]);
+    }
+
 }
