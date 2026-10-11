@@ -141,6 +141,15 @@ final class AnalysisDesktopController extends AbstractController
         return $this->json($result);
     }
 
+    #[Route('/distributed/workers', name: 'lab_internal_distributed_workers', methods: ['GET'])]
+    public function distributedWorkers(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        return $this->json([
+            'schema_version' => 'ezstudio.distributed.workers.v1',
+            'workers' => $this->distributed->workersSnapshot(),
+        ]);
+    }
     #[Route('/distributed/jobs/eligible', name: 'lab_internal_distributed_jobs_eligible', methods: ['POST'])]
     public function distributedEligibleJobs(Request $request): JsonResponse
     {

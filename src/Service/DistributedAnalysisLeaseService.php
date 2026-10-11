@@ -132,6 +132,38 @@ SQL);
         return $row;
     }
 
+    public function workersSnapshot(): array
+    {
+        $this->ensureSchema();
+        $staleBefore = time() - self::WORKER_STALE_SECONDS;
+
+        $rows = $this->db->pdo()->query(
+            'SELECT worker_id,protocol,capabilities_json,state,last_seen_at,last_seen_epoch
+             FROM analysis_workers
+             ORDER BY worker_id'
+        )->fetchAll();
+
+        $workers = [];
+        foreach ($rows as $row) {
+            $capabilities = json_decode((string)$row['capabilities_json'], true);
+            if (!is_array($capabilities)) {
+                $capabilities = [];
+            }
+
+            $lastSeenEpoch = (int)$row['last_seen_epoch'];
+            $workers[] = [
+                'worker_id' => (string)$row['worker_id'],
+                'protocol' => (string)$row['protocol'],
+                'state' => (string)$row['state'],
+                'last_seen_at' => (string)$row['last_seen_at'],
+                'last_seen_epoch' => $lastSeenEpoch,
+                'online' => $lastSeenEpoch >= $staleBefore,
+                'capabilities' => $capabilities,
+            ];
+        }
+
+        return $workers;
+    }
     private function distributedSpec(array $job): array
     {
         $request = json_decode((string)($job['request_json'] ?? ''), true);
