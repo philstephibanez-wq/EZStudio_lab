@@ -9,6 +9,7 @@ use App\Service\DistributedAnalysisLeaseService;
 use App\Service\ChordsDnaExecutionService;
 use App\Service\LabAnalysisTokenGuard;
 use App\Service\ProfileDnaExecutionService;
+use App\Service\ProfileExternalReviewService;
 use App\Service\StemsDnaExecutionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -24,10 +25,47 @@ final class AnalysisDesktopController extends AbstractController
         private readonly Database $db,
         private readonly DistributedAnalysisLeaseService $distributed,
         private readonly ProfileDnaExecutionService $profileDna,
+        private readonly ProfileExternalReviewService $profileExternalReview,
         private readonly ChordsDnaExecutionService $chordsDna,
         private readonly StemsDnaExecutionService $stemsDna,
     ) {}
 
+    #[Route('/profile/reviews/queue', name: 'lab_internal_profile_review_queue', methods: ['GET'])]
+    public function profileReviewQueue(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $limit = filter_var(
+            $request->query->get('limit', 100),
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 500]]
+        );
+        if ($limit === false) {
+            return $this->json(['error' => 'limit_must_be_1_500'], 422);
+        }
+
+        $reviews = $this->profileExternalReview->queue((int)$limit);
+        return $this->json([
+            'schema' => 'ezstudio.profile-review-queue.v1',
+            'count' => count($reviews),
+            'reviews' => $reviews,
+        ]);
+    }
+
+    #[Route('/profile/reviews', name: 'lab_internal_profile_review_submit', methods: ['POST'])]
+    public function profileReviewSubmit(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        try {
+            $revision = $this->profileExternalReview->save($request->toArray());
+            return $this->json([
+                'schema' => 'ezstudio.profile-review-submit.v1',
+                'ok' => true,
+                'revision' => $revision,
+            ]);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 422);
+        }
+    }
     #[Route('/hello', name: 'lab_internal_analysis_hello', methods: ['POST'])]
     public function hello(Request $request): JsonResponse
     {

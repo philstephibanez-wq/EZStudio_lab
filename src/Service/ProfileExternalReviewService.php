@@ -1,0 +1,287 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Service;
+
+final class ProfileExternalReviewService
+{
+    private const SCHEMA = 'ezstudio.profile-external-review.v1';
+
+    public function __construct(private readonly Database $db) {}
+
+    public function ensureSchema(): void
+    {
+        $this->db->pdo()->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS profile_external_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    revision_key TEXT NOT NULL,
+    reviewer TEXT NOT NULL DEFAULT 'assistant',
+    status TEXT NOT NULL CHECK(status IN ('draft','completed')),
+    identity_json TEXT NOT NULL DEFAULT '{}',
+    sources_json TEXT NOT NULL DEFAULT '[]',
+    consensus_json TEXT NOT NULL DEFAULT '{}',
+    comparison_json TEXT NOT NULL DEFAULT '{}',
+    confidence REAL NOT NULL DEFAULT 0,
+    schema_version TEXT NOT NULL DEFAULT 'ezstudio.profile-external-review.v1',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(run_id, revision_key),
+    FOREIGN KEY(run_id) REFERENCES scientific_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_profile_external_revisions_run_status
+ON profile_external_revisions(run_id,status,updated_at);
+SQL);
+    }
+
+    public function queue(int $limit = 100): array
+    {
+        $this->ensureSchema();
+        $effectiveLimit = max(1, min(500, $limit));
+
+        $sql = <<<'SQL'
+SELECT
+    sr.id AS run_id,
+    sr.public_id,
+    sr.song_id,
+    sr.state,
+    sr.engine_name,
+    sr.engine_version,
+    sr.model_name,
+    sr.checkpoint,
+    sr.config_json,
+    sr.metrics_json,
+    sr.diagnostics_json,
+    sr.finished_at,
+    s.title,
+    s.artist,
+    s.audio_sha256
+FROM scientific_runs sr
+JOIN songs s ON s.id=sr.song_id
+JOIN (
+    SELECT
+        CASE
+            WHEN TRIM(s2.audio_sha256)='' THEN 'song:' || s2.id
+            ELSE s2.audio_sha256
+        END AS audio_key,
+        MAX(sr2.id) AS max_run_id
+    FROM scientific_runs sr2
+    JOIN songs s2 ON s2.id=sr2.song_id
+    WHERE sr2.item='profile'
+      AND sr2.state='done'
+    GROUP BY
+        CASE
+            WHEN TRIM(s2.audio_sha256)='' THEN 'song:' || s2.id
+            ELSE s2.audio_sha256
+        END
+) latest ON latest.max_run_id=sr.id
+WHERE sr.item='profile'
+  AND sr.state='done'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM profile_external_revisions er
+      WHERE er.run_id=sr.id
+        AND er.status='completed'
+  )
+ORDER BY sr.id ASC
+LIMIT ?
+SQL;
+
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->bindValue(1, $effectiveLimit, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $rows[] = [
+                'schema' => 'ezstudio.profile-review-queue-item.v1',
+                'run_id' => (int)$row['run_id'],
+                'public_id' => (string)$row['public_id'],
+                'song_id' => (int)$row['song_id'],
+                'title' => (string)$row['title'],
+                'artist' => (string)$row['artist'],
+                'audio_sha256' => (string)$row['audio_sha256'],
+                'state' => (string)$row['state'],
+                'engine' => [
+                    'name' => (string)$row['engine_name'],
+                    'version' => (string)$row['engine_version'],
+                    'model' => (string)$row['model_name'],
+                    'checkpoint' => (string)$row['checkpoint'],
+                ],
+                'config' => $this->decodeObject((string)$row['config_json']),
+                'metrics' => $this->decodeObject((string)$row['metrics_json']),
+                'diagnostics' => $this->decodeObject((string)$row['diagnostics_json']),
+                'finished_at' => $row['finished_at'] !== null ? (string)$row['finished_at'] : null,
+            ];
+        }
+
+        return $rows;
+    }
+
+    public function save(array $payload): array
+    {
+        $this->ensureSchema();
+
+        $runId = filter_var(
+            $payload['run_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+        if ($runId === false) {
+            throw new \InvalidArgumentException('profile_external_review_run_id_required');
+        }
+
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT id,item,state FROM scientific_runs WHERE id=?"
+        );
+        $stmt->execute([(int)$runId]);
+        $run = $stmt->fetch();
+        if (!$run || (string)$run['item'] !== 'profile') {
+            throw new \RuntimeException('profile_external_review_profile_run_required');
+        }
+        if ((string)$run['state'] !== 'done') {
+            throw new \RuntimeException('profile_external_review_run_not_done');
+        }
+
+        $status = strtolower(trim((string)($payload['status'] ?? 'completed')));
+        if (!in_array($status, ['draft', 'completed'], true)) {
+            throw new \InvalidArgumentException('profile_external_review_status_invalid');
+        }
+
+        $identity = is_array($payload['identity'] ?? null) ? $payload['identity'] : [];
+        $sources = is_array($payload['sources'] ?? null) ? array_values($payload['sources']) : [];
+        $consensus = is_array($payload['consensus'] ?? null) ? $payload['consensus'] : [];
+        $comparison = is_array($payload['comparison'] ?? null) ? $payload['comparison'] : [];
+
+        if ($status === 'completed' && $sources === []) {
+            throw new \InvalidArgumentException('profile_external_review_completed_requires_sources');
+        }
+
+        $confidence = $payload['confidence'] ?? null;
+        if (!is_numeric($confidence)) {
+            throw new \InvalidArgumentException('profile_external_review_confidence_required');
+        }
+        $confidence = (float)$confidence;
+        if ($confidence < 0.0 || $confidence > 1.0) {
+            throw new \InvalidArgumentException('profile_external_review_confidence_out_of_range');
+        }
+
+        $reviewer = trim((string)($payload['reviewer'] ?? 'assistant'));
+        if ($reviewer === '') {
+            $reviewer = 'assistant';
+        }
+        $reviewer = mb_substr($reviewer, 0, 100);
+
+        $canonical = json_encode(
+            [
+                'identity' => $identity,
+                'sources' => $sources,
+                'consensus' => $consensus,
+                'comparison' => $comparison,
+                'confidence' => $confidence,
+            ],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+        if (!is_string($canonical)) {
+            throw new \RuntimeException('profile_external_review_json_encode_failed');
+        }
+
+        $revisionKey = trim((string)($payload['revision_key'] ?? ''));
+        if ($revisionKey === '') {
+            $revisionKey = 'profile-'.$runId.'-'.substr(hash('sha256', $canonical), 0, 16);
+        }
+        $revisionKey = mb_substr($revisionKey, 0, 120);
+
+        $now = gmdate('c');
+        $upsert = $this->db->pdo()->prepare(
+            'INSERT INTO profile_external_revisions(
+                run_id,revision_key,reviewer,status,
+                identity_json,sources_json,consensus_json,comparison_json,
+                confidence,schema_version,created_at,updated_at
+             ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+             ON CONFLICT(run_id,revision_key) DO UPDATE SET
+                reviewer=excluded.reviewer,
+                status=excluded.status,
+                identity_json=excluded.identity_json,
+                sources_json=excluded.sources_json,
+                consensus_json=excluded.consensus_json,
+                comparison_json=excluded.comparison_json,
+                confidence=excluded.confidence,
+                schema_version=excluded.schema_version,
+                updated_at=excluded.updated_at'
+        );
+        $upsert->execute([
+            (int)$runId,
+            $revisionKey,
+            $reviewer,
+            $status,
+            json_encode($identity, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($consensus, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($comparison, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $confidence,
+            self::SCHEMA,
+            $now,
+            $now,
+        ]);
+
+        $select = $this->db->pdo()->prepare(
+            'SELECT * FROM profile_external_revisions
+             WHERE run_id=? AND revision_key=?'
+        );
+        $select->execute([(int)$runId, $revisionKey]);
+        $row = $select->fetch();
+        if (!$row) {
+            throw new \RuntimeException('profile_external_review_persist_failed');
+        }
+
+        return $this->hydrate($row);
+    }
+
+    public function revisionsForRun(int $runId): array
+    {
+        $this->ensureSchema();
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT * FROM profile_external_revisions
+             WHERE run_id=? ORDER BY id DESC'
+        );
+        $stmt->execute([$runId]);
+
+        return array_map(
+            fn(array $row): array => $this->hydrate($row),
+            $stmt->fetchAll()
+        );
+    }
+
+    private function hydrate(array $row): array
+    {
+        return [
+            'schema' => (string)$row['schema_version'],
+            'id' => (int)$row['id'],
+            'run_id' => (int)$row['run_id'],
+            'revision_key' => (string)$row['revision_key'],
+            'reviewer' => (string)$row['reviewer'],
+            'status' => (string)$row['status'],
+            'identity' => $this->decodeObject((string)$row['identity_json']),
+            'sources' => $this->decodeList((string)$row['sources_json']),
+            'consensus' => $this->decodeObject((string)$row['consensus_json']),
+            'comparison' => $this->decodeObject((string)$row['comparison_json']),
+            'confidence' => (float)$row['confidence'],
+            'created_at' => (string)$row['created_at'],
+            'updated_at' => (string)$row['updated_at'],
+        ];
+    }
+
+    private function decodeObject(string $json): array
+    {
+        $value = json_decode($json, true);
+        return is_array($value) ? $value : [];
+    }
+
+    private function decodeList(string $json): array
+    {
+        $value = json_decode($json, true);
+        return is_array($value) ? array_values($value) : [];
+    }
+}
