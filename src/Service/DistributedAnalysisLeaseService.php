@@ -326,9 +326,9 @@ SQL);
         return $rows;
     }
 
-    private function queuedRows(int $limit): array
+    private function queuedRows(): array
     {
-        $stmt = $this->db->pdo()->prepare(
+        return $this->db->pdo()->query(
             "SELECT j.*,s.title,s.artist
              FROM analysis_jobs j
              JOIN songs s ON s.id=j.song_id
@@ -343,12 +343,8 @@ SQL);
                          ELSE j.kind
                      END
                )
-             ORDER BY j.created_at ASC,j.id ASC
-             LIMIT ?"
-        );
-        $stmt->bindValue(1, max(1, min(500, $limit)), PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
+             ORDER BY j.created_at ASC,j.id ASC"
+        )->fetchAll();
     }
 
     public function eligibleJobs(string $workerId, int $limit = 100): array
@@ -357,7 +353,8 @@ SQL);
         $worker = $this->worker($workerId);
         $jobs = [];
 
-        foreach ($this->queuedRows($limit) as $row) {
+        $effectiveLimit = max(1, min(500, $limit));
+        foreach ($this->queuedRows() as $row) {
             $compat = $this->compatibility($row, $worker);
             if (!$compat['eligible']) {
                 continue;
@@ -371,6 +368,10 @@ SQL);
                 'priority' => 50,
                 'requirements' => $compat['requirements'],
             ];
+
+            if (count($jobs) >= $effectiveLimit) {
+                break;
+            }
         }
 
         return $jobs;

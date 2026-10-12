@@ -656,22 +656,36 @@ SQL;
         return $jobId;
     }
 
+    private function isDistributedAnalysisJob(array $job): bool
+    {
+        $request = json_decode((string)($job['request_json'] ?? ''), true);
+        if (!is_array($request)) {
+            return false;
+        }
+
+        $distributed = $request['distributed'] ?? null;
+        return is_array($distributed)
+            && ($distributed['enabled'] ?? false) === true;
+    }
+
     public function analysisQueue(int $limit = 100): array
     {
-        $stmt = $this->pdo()->prepare(
+        $effectiveLimit = max(1, min(500, $limit));
+        $stmt = $this->pdo()->query(
             "SELECT j.id,j.kind,j.status,j.progress,j.run_id,
-                    j.scientific_run_id,j.song_id,s.title,s.artist
+                    j.scientific_run_id,j.song_id,j.request_json,s.title,s.artist
              FROM analysis_jobs j
              JOIN songs s ON s.id=j.song_id
              WHERE j.status='queued'
-             ORDER BY j.created_at ASC,j.id ASC
-             LIMIT ?"
+             ORDER BY j.created_at ASC,j.id ASC"
         );
-        $stmt->bindValue(1, max(1, min(500, $limit)), PDO::PARAM_INT);
-        $stmt->execute();
 
         $rows = [];
         foreach ($stmt->fetchAll() as $row) {
+            if ($this->isDistributedAnalysisJob($row)) {
+                continue;
+            }
+
             $rows[] = [
                 'job_id' => (int)$row['id'],
                 'kind' => (string)$row['kind'],
@@ -683,6 +697,10 @@ SQL;
                 'resource_class' => 'gpu',
                 'priority' => 50,
             ];
+
+            if (count($rows) >= $effectiveLimit) {
+                break;
+            }
         }
         return $rows;
     }
@@ -720,7 +738,7 @@ SQL;
         $pdo = $this->pdo();
         $pdo->exec('BEGIN IMMEDIATE');
         try {
-            $row = $pdo->query(
+            $candidates = $pdo->query(
                 "SELECT * FROM analysis_jobs j
                  WHERE j.status='queued'
                    AND NOT EXISTS (
@@ -733,9 +751,16 @@ SQL;
                              ELSE j.kind
                          END
                    )
-                 ORDER BY j.created_at ASC,j.id ASC
-                 LIMIT 1"
-            )->fetch();
+                 ORDER BY j.created_at ASC,j.id ASC"
+            )->fetchAll();
+
+            $row = null;
+            foreach ($candidates as $candidate) {
+                if (!$this->isDistributedAnalysisJob($candidate)) {
+                    $row = $candidate;
+                    break;
+                }
+            }
 
             if (!$row) {
                 $pdo->commit();
