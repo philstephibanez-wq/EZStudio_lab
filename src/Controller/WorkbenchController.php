@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Service\AnalysisRunRegistry;
 use App\Service\CatalogService;
 use App\Service\Database;
+use App\Service\DistributedAnalysisLeaseService;
 use App\Service\ProfileDnaExecutionService;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -40,10 +41,14 @@ final class WorkbenchController extends AbstractController
     }
 
     #[Route('/home', name: 'workbench_home', methods: ['GET'])]
-    public function home(CatalogService $catalog): Response
-    {
+    public function home(
+        CatalogService $catalog,
+        DistributedAnalysisLeaseService $distributed,
+    ): Response {
         return $this->render('workbench/home.html.twig', [
             'songs' => $catalog->songs(),
+            'distributed_workers' => $distributed->workersSnapshot(),
+            'distributed_jobs' => $distributed->jobsSnapshot(),
         ]);
     }
 

@@ -164,6 +164,76 @@ SQL);
 
         return $workers;
     }
+    public function jobsSnapshot(?int $songId = null): array
+    {
+        $this->ensureSchema();
+        $workers = $this->workersSnapshot();
+
+        $sql = "SELECT j.*,s.title,s.artist,
+                       l.worker_id AS lease_worker_id,
+                       l.heartbeat_at AS lease_heartbeat_at,
+                       l.expires_at_epoch AS lease_expires_at_epoch
+                FROM analysis_jobs j
+                JOIN songs s ON s.id=j.song_id
+                LEFT JOIN analysis_job_leases l ON l.job_id=j.id";
+        $params = [];
+        if ($songId !== null) {
+            $sql .= ' WHERE j.song_id=?';
+            $params[] = $songId;
+        }
+        $sql .= ' ORDER BY j.id DESC';
+
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute($params);
+
+        $jobs = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $spec = $this->distributedSpec($row);
+            if (!$spec['eligible']) {
+                continue;
+            }
+
+            $compatibleWorkers = [];
+            foreach ($workers as $worker) {
+                if (!($worker['online'] ?? false)) {
+                    continue;
+                }
+                $compat = $this->compatibility($row, $worker);
+                if ($compat['eligible']) {
+                    $compatibleWorkers[] = (string)$worker['worker_id'];
+                }
+            }
+
+            $expiresAt = $row['lease_expires_at_epoch'] !== null
+                ? (int)$row['lease_expires_at_epoch']
+                : null;
+
+            $jobs[] = [
+                'job_id' => (int)$row['id'],
+                'song_id' => (int)$row['song_id'],
+                'title' => (string)$row['title'],
+                'artist' => (string)$row['artist'],
+                'kind' => (string)$row['kind'],
+                'status' => (string)$row['status'],
+                'progress' => (int)$row['progress'],
+                'compatible_workers' => $compatibleWorkers,
+                'requirements' => $spec['requirements'],
+                'lease' => [
+                    'worker_id' => $row['lease_worker_id'] !== null
+                        ? (string)$row['lease_worker_id']
+                        : null,
+                    'heartbeat_at' => $row['lease_heartbeat_at'] !== null
+                        ? (string)$row['lease_heartbeat_at']
+                        : null,
+                    'expires_at_epoch' => $expiresAt,
+                    'active' => $expiresAt !== null && $expiresAt > time(),
+                ],
+            ];
+        }
+
+        return $jobs;
+    }
+
     private function distributedSpec(array $job): array
     {
         $request = json_decode((string)($job['request_json'] ?? ''), true);
@@ -377,6 +447,62 @@ SQL);
         return $jobs;
     }
 
+
+    private function withDistributedSharedPath(array $context): array
+    {
+        $paths = $context['paths'] ?? null;
+        if (!is_array($paths)) {
+            throw new \RuntimeException('distributed_context_paths_missing');
+        }
+
+        $source = trim((string)($paths['source'] ?? ''));
+        if ($source === '') {
+            throw new \RuntimeException('distributed_source_path_missing');
+        }
+
+        $projectRoot = dirname(__DIR__, 2);
+        $importsRoot = $projectRoot
+            .DIRECTORY_SEPARATOR.'data'
+            .DIRECTORY_SEPARATOR.'imports';
+
+        $sourceNormalized = str_replace('\\', '/', $source);
+        $importsNormalized = rtrim(
+            str_replace('\\', '/', $importsRoot),
+            '/'
+        );
+        $prefix = $importsNormalized.'/';
+
+        if (!str_starts_with(
+            strtolower($sourceNormalized),
+            strtolower($prefix)
+        )) {
+            throw new \RuntimeException('distributed_source_outside_imports');
+        }
+
+        $relative = substr($sourceNormalized, strlen($prefix));
+        if ($relative === false || trim($relative, '/') === '') {
+            throw new \RuntimeException(
+                'distributed_source_relative_path_missing'
+            );
+        }
+
+        $uncRoot = trim((string)(
+            getenv('EZSTUDIO_DISTRIBUTED_IMPORTS_UNC_ROOT')
+            ?: '\\\\EZSTUDIO-MAIN\\EZStudioLab-Imports'
+        ));
+        if (!str_starts_with($uncRoot, '\\\\')) {
+            throw new \RuntimeException(
+                'distributed_imports_unc_root_invalid'
+            );
+        }
+
+        $sharedSource = rtrim($uncRoot, '\\/')
+            .'\\'.str_replace('/', '\\', ltrim($relative, '/'));
+
+        $context['paths']['shared_source'] = $sharedSource;
+        return $context;
+    }
+
     public function claim(
         int $jobId,
         string $workerId,
@@ -471,7 +597,7 @@ SQL);
 
             $pdo->commit();
 
-            $context = $this->db->analysisJobContext($jobId);
+            $context = $this->withDistributedSharedPath($this->db->analysisJobContext($jobId));
             $context['lease'] = [
                 'worker_id' => $workerId,
                 'lease_token' => $token,
@@ -552,7 +678,7 @@ SQL);
         string $leaseToken
     ): array {
         $lease = $this->assertLease($jobId, $workerId, $leaseToken);
-        $context = $this->db->analysisJobContext($jobId);
+        $context = $this->withDistributedSharedPath($this->db->analysisJobContext($jobId));
         $context['lease'] = [
             'worker_id' => (string)$lease['worker_id'],
             'expires_at_epoch' => (int)$lease['expires_at_epoch'],

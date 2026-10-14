@@ -24,7 +24,68 @@
 .catalog-trash{padding:.42rem .5rem;min-width:2rem}
 .catalog-zip-disabled{opacity:.45;pointer-events:none}
 .catalog-job-cancel{margin-left:6px;padding:.2rem .45rem;font-size:11px}
+.distributed-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.distributed-grid{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,2fr);gap:14px}
+.distributed-item{border:1px solid var(--line);border-radius:5px;padding:9px 10px;background:var(--soft)}
+.distributed-item+.distributed-item{margin-top:7px}
+.distributed-line{display:flex;justify-content:space-between;gap:10px;align-items:center}
+@media(max-width:1150px){.distributed-grid{grid-template-columns:1fr}}
 </style>
+
+<div class="card" id="distributed-execution">
+  <div class="distributed-header">
+    <div>
+      <h2>Exécution distribuée</h2>
+      <div class="meta">État des assistants, jobs compatibles, claim/lease et progression. Vue lecture seule.</div>
+    </div>
+  </div>
+
+  <div class="distributed-grid">
+    <section>
+      <h3>Assistants</h3>
+      {% for worker in distributed_workers %}
+        <div class="distributed-item">
+          <div class="distributed-line">
+            <strong>{{ worker.worker_id }}</strong>
+            <span class="badge {{ worker.online ? 'ok' : '' }}">{{ worker.online ? 'EN LIGNE' : 'PÉRIMÉ' }}</span>
+          </div>
+          <div class="meta">
+            {{ worker.state }} · dernier heartbeat {{ worker.last_seen_at }}
+            {% if worker.capabilities.cuda_available ?? false %}
+              · CUDA · VRAM {{ worker.capabilities.max_vram_mb ?? 0 }} MB
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="meta">Aucun assistant distribué enregistré.</div>
+      {% endfor %}
+    </section>
+
+    <section>
+      <h3>Jobs distribués</h3>
+      {% for job in distributed_jobs %}
+        <div class="distributed-item">
+          <div class="distributed-line">
+            <strong>#{{ job.job_id }} · {{ job.title }} · {{ job.kind }}</strong>
+            <span class="badge {{ job.status == 'running' ? 'ok' : '' }}">{{ job.status }} · {{ job.progress }}%</span>
+          </div>
+          <div class="meta">
+            {% if job.lease.active %}
+              Worker claimé : <strong>{{ job.lease.worker_id }}</strong>
+              · lease actif
+            {% elseif job.compatible_workers is not empty %}
+              Compatible : {{ job.compatible_workers|join(', ') }} · en attente de claim
+            {% else %}
+              Aucun worker compatible en ligne
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="meta">Aucun job distribué.</div>
+      {% endfor %}
+    </section>
+  </div>
+</div>
 
 <div class="catalog-batch-toolbar">
   <form method="post"
