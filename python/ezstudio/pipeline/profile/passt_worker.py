@@ -6,6 +6,45 @@ import os
 from pathlib import Path
 
 
+
+def _install_direct_checkpoint_resolver(checkpoint: Path) -> None:
+    if not checkpoint.is_file():
+        raise RuntimeError(f"passt_checkpoint_missing:{checkpoint}")
+
+    expected_name = checkpoint.name
+
+    def patch_module(module) -> None:
+        original = getattr(module, "download_cached_file", None)
+        if original is None:
+            return
+
+        def direct_download_cached_file(
+            url,
+            check_hash=True,
+            progress=False,
+        ):
+            if Path(url).name == expected_name:
+                return str(checkpoint)
+            return original(
+                url,
+                check_hash=check_hash,
+                progress=progress,
+            )
+
+        module.download_cached_file = direct_download_cached_file
+
+    try:
+        import timm.models._hub as timm_private_hub
+    except ModuleNotFoundError:
+        timm_private_hub = None
+
+    import timm.models.hub as timm_hub
+
+    if timm_private_hub is not None:
+        patch_module(timm_private_hub)
+    patch_module(timm_hub)
+
+
 def _chunks(audio, sr: int, seconds: float = 10.0, max_chunks: int = 8):
     import torch
 
@@ -35,10 +74,12 @@ def main() -> int:
     parser.add_argument("--torch-home", required=True)
     args = parser.parse_args()
 
+    checkpoint = Path(args.checkpoint)
     os.environ["TORCH_HOME"] = str(Path(args.torch_home).resolve())
 
     import torch
     import torchaudio
+    _install_direct_checkpoint_resolver(checkpoint)
     import hear21passt
     from hear21passt.base import load_model
 

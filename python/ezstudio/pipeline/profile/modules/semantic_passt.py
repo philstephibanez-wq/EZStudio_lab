@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -11,28 +10,6 @@ import numpy as np
 
 from module import ModuleContext, file_sha256
 from runtime_deps import prepare_profile_imports
-
-
-def _ensure_cached_checkpoint(
-    checkpoint: Path,
-    torch_home: Path,
-) -> Path:
-    target_dir = torch_home / "hub" / "checkpoints"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / "passt-s-f128-p16-s10-ap.476-swa.pt"
-
-    if target.is_file() and target.stat().st_size == checkpoint.stat().st_size:
-        return target
-
-    if target.exists():
-        target.unlink()
-
-    try:
-        os.link(checkpoint, target)
-    except OSError:
-        shutil.copy2(checkpoint, target)
-
-    return target
 
 
 def _temporal_summary(
@@ -115,7 +92,8 @@ def run(context: ModuleContext) -> dict:
             r"H:\EZStudio_lab\var\runtime\cache\passt-torch-home",
         )
     )
-    cached = _ensure_cached_checkpoint(checkpoint, torch_home)
+    torch_home.mkdir(parents=True, exist_ok=True)
+    cached = checkpoint
 
     audio = librosa.resample(
         np.asarray(context.y, dtype=np.float32),
