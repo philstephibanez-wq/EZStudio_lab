@@ -1,18 +1,17 @@
-Remove-Item -Path (Join-Path $PSScriptRoot "..\var\tmp\*") -Recurse -Force -ErrorAction SilentlyContinue
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-Set-Location $root
-
-$php = "H:\PHP\php-8.5-x64\php.exe"
+$orch = "H:\EZS_orchestrator"
 $python = "H:\Python\pythoncore-3.14-64\python.exe"
-$public = Join-Path $root "public"
-$router = Join-Path $root "router.php"
 
-if (-not (Test-Path $php)) { throw "PHP absent: $php" }
-if (-not (Test-Path $python)) { throw "Python absent: $python" }
-if (-not (Test-Path $public)) { throw "PUBLIC_DIR_MISSING: $public" }
-if (-not (Test-Path $router)) { throw "ROUTER_MISSING: $router" }
+if (-not (Test-Path -LiteralPath $orch -PathType Container)) {
+    throw "ORCHESTRATOR_ROOT_MISSING: $orch"
+}
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+    throw "PYTHON_MISSING: $python"
+}
+
+Set-Location $root
 
 $env:APP_ENV = "dev"
 $env:APP_DEBUG = "1"
@@ -22,24 +21,22 @@ $env:BS_ROFORMER_MODELS_PATH = "H:\AIModels\audio\separation\bs-roformer"
 $env:MELBAND_ROFORMER_MODELS_PATH = "H:\AIModels\audio\separation\melband-roformer"
 $env:EZSTUDIO_PROFILE_MODELS = "H:\AIModels\audio\profile"
 $env:EZSTUDIO_BEAT_THIS_CHECKPOINT = "H:\AIModels\audio\rhythm\beat-this\beat_this-final0.ckpt"
+
 $storageRoot = Join-Path $root "var\storage"
 $runtimeRoot = Join-Path $root "var\runtime"
 $tmpRoot = Join-Path $root "var\tmp"
 $logsRoot = Join-Path $root "var\logs"
 
 New-Item -ItemType Directory -Force -Path `
-  $storageRoot, `
-  $runtimeRoot, `
-  $tmpRoot, `
-  $logsRoot | Out-Null
+    $storageRoot, `
+    $runtimeRoot, `
+    $tmpRoot, `
+    $logsRoot | Out-Null
 
 $env:EZSTUDIO_STORAGE_ROOT = $storageRoot
 $env:EZSTUDIO_TMP_ROOT = $tmpRoot
 $env:EZSTUDIO_LOG_ROOT = $logsRoot
-
-# Legacy compatibility only: durable outputs now resolve under STORAGE_ROOT.
 $env:EZSTUDIO_RUNTIME_ROOT = $storageRoot
-
 $env:EZSTUDIO_DEP_ROOT = Join-Path $runtimeRoot "deps"
 $env:EZSTUDIO_PROFILE_DEP_ROOT = Join-Path $runtimeRoot "deps\profile-r3b12"
 $env:EZSTUDIO_PROFILE_R3B13_DEP_ROOT = Join-Path $runtimeRoot "deps\profile-r3b13"
@@ -54,45 +51,53 @@ $env:EZSTUDIO_EXPORT_ROOT = Join-Path $storageRoot "exports"
 $env:EZSTUDIO_JOB_ROOT = Join-Path $tmpRoot "jobs"
 $env:KEEP_UPLOADS = "1"
 
-Write-Host "EZStudio_lab"
+Write-Host "=== EZStudio LAB - démarrage manuel canonique ==="
 Write-Host "MODELS=$env:AI_MODELS_ROOT"
-Write-Host "PROFILE_DEPS=$env:EZSTUDIO_PROFILE_DEP_ROOT"
 Write-Host "STORAGE=$env:EZSTUDIO_STORAGE_ROOT"
 Write-Host "TMP=$env:EZSTUDIO_TMP_ROOT"
 Write-Host "LOGS=$env:EZSTUDIO_LOG_ROOT"
-Write-Host "RUNTIME_DEPS=$env:EZSTUDIO_DEP_ROOT"
-Write-Host "DOCROOT=$public"
+Write-Host "CACHE_CLEAR=YES"
+Write-Host "CACHE_PREDELETE=NO"
+Write-Host "CADDY=YES"
+Write-Host "VISIBLE_CHILD_CONSOLE=NO"
+Write-Host "PUBLIC=http://127.0.0.1:8702"
+Write-Host ""
 
-$devCache = Join-Path $root "var\cache\dev"
-if (Test-Path $devCache) {
-    Remove-Item -Recurse -Force $devCache
+Push-Location $orch
+try {
+    @'
+from config.loader import load_runtime_config
+from contracts.target import Target
+from server_manager.manager import ServerManager
+from caddy_manager.manager import CaddyManager
+
+config = load_runtime_config()
+servers = ServerManager(config)
+caddy = CaddyManager(config)
+
+before_server = servers.view(Target.LAB, "dev")
+before_caddy = caddy.view(Target.LAB)
+
+print(f"LAB backend before: state={before_server.ownership} pid={before_server.pid}")
+print(f"LAB Caddy before:   state={before_caddy.ownership} pid={before_caddy.pid}")
+
+server = servers.start(Target.LAB, "dev")
+edge = caddy.start(Target.LAB)
+
+print(f"LAB backend: pid={server.pid} http={server.http_alive} ownership={server.ownership}")
+print(f"LAB Caddy:   pid={edge.pid} http={edge.http_alive} ownership={edge.ownership}")
+
+if not server.process_alive or not server.http_alive:
+    raise SystemExit("LAB_BACKEND_NOT_HEALTHY")
+if not edge.process_alive or not edge.http_alive:
+    raise SystemExit("LAB_CADDY_NOT_HEALTHY")
+
+print("LAB_START_OK http://127.0.0.1:8702")
+'@ | & $python -
+    if ($LASTEXITCODE -ne 0) {
+        throw "LAB_START_KO"
+    }
 }
-
-& $php bin\console cache:clear --env=dev
-if ($LASTEXITCODE -ne 0) {
-    throw "DEV_CACHE_CLEAR_KO"
+finally {
+    Pop-Location
 }
-
-$serverLog = Join-Path $logsRoot "php-server.log"
-Write-Host "SERVER=http://127.0.0.1:8701"
-Write-Host "SERVER_LOG=$serverLog"
-
-$serverArgs = @(
-  "-d", "upload_max_filesize=1G",
-  "-d", "post_max_size=1100M",
-  "-d", "max_execution_time=0",
-  "-S", "127.0.0.1:8701",
-  "-t", $public,
-  $router
-)
-
-$serverOut = Join-Path $logsRoot "php-server.stdout.log"
-$serverErr = Join-Path $logsRoot "php-server.stderr.log"
-
-Start-Process `
-  -FilePath $php `
-  -ArgumentList $serverArgs `
-  -NoNewWindow `
-  -Wait `
-  -RedirectStandardOutput $serverOut `
-  -RedirectStandardError $serverErr
