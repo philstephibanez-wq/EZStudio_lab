@@ -14,7 +14,8 @@
     "symfony/yaml": "7.4.*"
   },
   "require-dev": {
-    "symfony/debug-bundle": "7.4.*"
+    "symfony/debug-bundle": "7.4.*",
+    "symfony/web-profiler-bundle": "8.1.*"
   },
   "autoload": {
     "psr-4": {
