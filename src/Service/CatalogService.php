@@ -84,7 +84,10 @@ final class CatalogService
                             continue;
                         }
                         $evidence = $dimension['evidence'] ?? null;
-                        if (is_string($evidence) && trim($evidence) !== '') {
+                        if (
+                            (is_string($evidence) && trim($evidence) !== '')
+                            || (is_array($evidence) && $evidence !== [])
+                        ) {
                             $hasScoredEvidence = true;
                             break;
                         }
