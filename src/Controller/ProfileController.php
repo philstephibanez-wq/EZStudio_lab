@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Service\AnalysisRunRegistry;
 use App\Service\ProfileDnaExecutionService;
 use App\Service\ProfileFrenchSummary;
+use App\Service\ProfileExternalReviewService;
 use App\Service\ProfileValidationService;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -29,6 +30,7 @@ final class ProfileController extends AbstractController
         ProfileDnaExecutionService $execution,
         ProfileFrenchSummary $summary,
         ProfileValidationService $validation,
+        ProfileExternalReviewService $externalReview,
     ): Response {
         $song = $catalog->selectedSong($this->songId($request));
         $runs = [];
@@ -66,6 +68,7 @@ final class ProfileController extends AbstractController
             'selected_profile_run' => $selected,
             'profile_job' => $selected ? $execution->jobForRun((int)$selected['id']) : null,
             'profile_summary' => $selected ? $summary->build($selected) : null,
+            'profile_external_revisions' => $selected ? $externalReview->revisionsForRun((int)$selected['id']) : [],
             'profile_validation_subjects' => $selected
                 ? $validation->subjectsForRun($selected)
                 : [],
