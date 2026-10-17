@@ -126,6 +126,23 @@
     <td>
       {% if s.state == 'done' %}
         <span class="badge ok">Prêt{% if s.version %} · <span class="catalog-version">{{ s.version|replace({'PROFILE.':'','STEMS.':'','CHORDS.':'','LYRICS.':''}) }}</span>{% endif %}</span>
+        {% if key == 'profile' %}
+          {% if song.profile_ai_reviewed ?? false %}
+            <div>
+              <span
+                class="badge ok"
+                title="Avis IA enregistré pour ce run PROFILE ; ne signifie pas une validation scientifique indépendante"
+              >
+                Révisé par l’IA
+              </span>
+              <a href="{{ path('workbench_profile', {song: song.id, run: song.profile.run_id}) }}">
+                <span class="meta">Voir la révision #{{ song.profile_ai_revision_id }}</span>
+              </a>
+            </div>
+          {% else %}
+            <div class="meta">Révision IA en attente</div>
+          {% endif %}
+        {% endif %}
       {% elseif s.state == 'queued' %}
         <span class="badge" data-analysis-active="1">En attente{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
         {% if s.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:s.job_id}) }}" data-job-id="{{ s.job_id }}" title="Annuler le job #{{ s.job_id }}">■</button>{% endif %}
