@@ -2,7 +2,7 @@
 
 namespace App\Service;
 
-final class StemsDnaExecutionService
+final class StemsExecutionService
 {
     private const STEM_NAMES = [
         'lead_vocals',

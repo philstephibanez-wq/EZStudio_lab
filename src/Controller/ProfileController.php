@@ -3,7 +3,7 @@
 namespace App\Controller;
 
 use App\Service\AnalysisRunRegistry;
-use App\Service\ProfileDnaExecutionService;
+use App\Service\ProfileExecutionService;
 use App\Service\ProfileFrenchSummary;
 use App\Service\ProfileExternalReviewService;
 use App\Service\ProfileValidationService;
@@ -27,7 +27,7 @@ final class ProfileController extends AbstractController
         Request $request,
         WorkbenchCatalog $catalog,
         AnalysisRunRegistry $runRegistry,
-        ProfileDnaExecutionService $execution,
+        ProfileExecutionService $execution,
         ProfileFrenchSummary $summary,
         ProfileValidationService $validation,
         ProfileExternalReviewService $externalReview,
@@ -135,7 +135,7 @@ final class ProfileController extends AbstractController
     }
 
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
-    public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileDnaExecutionService $execution): Response
+    public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileExecutionService $execution): Response
     {
         $songId = filter_var($request->request->get('song'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($songId === false || $songId === null) return new Response('Chanson invalide.', 400);

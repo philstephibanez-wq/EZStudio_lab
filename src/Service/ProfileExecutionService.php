@@ -2,7 +2,7 @@
 
 namespace App\Service;
 
-final class ProfileDnaExecutionService
+final class ProfileExecutionService
 {
     public function __construct(
         private readonly Database $db,

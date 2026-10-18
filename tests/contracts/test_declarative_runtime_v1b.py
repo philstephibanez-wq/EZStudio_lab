@@ -20,16 +20,14 @@ from ezstudio.runtime.module_config import load_module_config
 
 SPEC = ROOT / "presets/profile/semantic.clap-open-vocabulary.r3b35c.json"
 WRAPPER = ROOT / "python/ezstudio/pipeline/profile/modules/semantic_clap_open_vocab.py"
-LEGACY = ROOT / "python/ezstudio/pipeline/profile/semantic_clap.py"
 ADAPTER = ROOT / "python/ezstudio/runtime/adapters/clap_zero_shot.py"
 
-for path in (SPEC, WRAPPER, LEGACY, ADAPTER):
+for path in (SPEC, WRAPPER, ADAPTER):
     assert path.is_file(), path
 
 # Syntax only: no heavyweight model imports happen here.
 ast.parse(WRAPPER.read_text(encoding="utf-8"))
 ast.parse(ADAPTER.read_text(encoding="utf-8"))
-ast.parse(LEGACY.read_text(encoding="utf-8"))
 
 spec = load_module_config(SPEC)
 assert spec.phase == "profile"
@@ -68,16 +66,14 @@ assert [x["label"] for x in mutated["selected"]] == ["a"]
 
 wrapper_text = WRAPPER.read_text(encoding="utf-8")
 assert "run_clap_zero_shot" in wrapper_text
-assert "load_module_config" in wrapper_text
-assert "semantic.clap-open-vocabulary.r3b35c.json" in wrapper_text
+assert "resolved_module_config" in wrapper_text
+assert "profile_clap_resolved_module_config_missing" in wrapper_text
 assert "from semantic_clap import" not in wrapper_text
 
-legacy_text = LEGACY.read_text(encoding="utf-8")
-assert "def clap_tags(" in legacy_text
-assert "TAXONOMY =" in legacy_text
+assert not (ROOT / "python/ezstudio/pipeline/profile/semantic_clap.py").exists()
 
 print("DECLARATIVE_RUNTIME_V1B_CONTRACT_OK")
 print("PROFILE CLAP is driven by R3B35C Module Config")
-print("Legacy CLAP implementation remains available for equivalence checks")
+print("CLAP module config now resolved once in the phase registry")
 print("Changing compatible decision parameters requires no engine Python change")
 print("CHORDS/N baseline untouched")

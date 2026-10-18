@@ -4,7 +4,7 @@ namespace App\Controller;
 
 use App\Service\AnalysisRunRegistry;
 use App\Service\LabCatalog;
-use App\Service\StemsDnaExecutionService;
+use App\Service\StemsExecutionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -18,7 +18,7 @@ final class StemsLabController extends AbstractController
         Request $request,
         LabCatalog $catalog,
         AnalysisRunRegistry $runRegistry,
-        StemsDnaExecutionService $execution,
+        StemsExecutionService $execution,
     ): Response {
         $songId = filter_var(
             $request->query->get('song'),
@@ -30,13 +30,13 @@ final class StemsLabController extends AbstractController
         );
 
         $songJobs = $song ? $execution->jobsForSong((int)$song['id']) : [];
-        $dnaRuns = [];
+        $scientificRuns = [];
         foreach ($songJobs as $job) {
             $runId = (int)($job['scientific_run_id'] ?? 0);
             if ($runId > 0) {
                 $run = $runRegistry->run($runId);
                 if ($run) {
-                    $dnaRuns[(int)$job['job_id']] = $run;
+                    $scientificRuns[(int)$job['job_id']] = $run;
                 }
             }
         }
@@ -45,7 +45,7 @@ final class StemsLabController extends AbstractController
             'songs' => $catalog->songs(),
             'selected_song' => $song,
             'jobs' => $songJobs,
-            'dna_runs' => $dnaRuns,
+            'scientific_runs' => $scientificRuns,
             'source_available' => $song ? $catalog->sourcePath($song) !== null : false,
         ]);
     }
@@ -55,7 +55,7 @@ final class StemsLabController extends AbstractController
         Request $request,
         LabCatalog $catalog,
         AnalysisRunRegistry $runRegistry,
-        StemsDnaExecutionService $execution,
+        StemsExecutionService $execution,
     ): Response {
         $songId = filter_var(
             $request->request->get('song'),
@@ -126,17 +126,17 @@ final class StemsLabController extends AbstractController
     public function job(
         int $id,
         AnalysisRunRegistry $runRegistry,
-        StemsDnaExecutionService $execution,
+        StemsExecutionService $execution,
     ): Response {
         $job = $execution->jobView($id);
         if ($job === null) {
             throw $this->createNotFoundException();
         }
 
-        $dnaRun = null;
+        $scientificRun = null;
         $scientificRunId = (int)($job['scientific_run_id'] ?? 0);
         if ($scientificRunId > 0) {
-            $dnaRun = $runRegistry->run($scientificRunId);
+            $scientificRun = $runRegistry->run($scientificRunId);
         }
 
         $manifest = null;
@@ -170,7 +170,7 @@ final class StemsLabController extends AbstractController
 
         return $this->render('lab/stems_job.html.twig', [
             'job' => $job,
-            'dna_run' => $dnaRun,
+            'scientific_run' => $scientificRun,
             'manifest' => is_array($manifest) ? $manifest : null,
             'diagnostics' => is_array($diagnostics) ? $diagnostics : null,
             'worker_log' => $workerLog,

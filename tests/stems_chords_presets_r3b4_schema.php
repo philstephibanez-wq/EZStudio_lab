@@ -4,12 +4,12 @@ declare(strict_types=1);
 require dirname(__DIR__).'/vendor/autoload.php';
 
 use App\Service\Database;
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 
 $root=dirname(__DIR__);
 $db=new Database($root.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'benchmark.sqlite');
-$dna=new DnaRegistry($db);
-$dna->ensureSchema();
+$runRegistry=new AnalysisRunRegistry($db);
+$runRegistry->ensureSchema();
 
 $required=[
  'scientific_runs','scientific_run_parents','scientific_artifacts',
@@ -24,4 +24,4 @@ foreach($required as $table){
  if($stmt->fetchColumn()===false) throw new RuntimeException('missing_table:'.$table);
 }
 
-echo "EZSTUDIO_STEMS_CHORDS_DNA_R3B4_SCHEMA_OK\n";
+echo "EZSTUDIO_STEMS_CHORDS_PRESETS_R3B4_SCHEMA_OK\n";

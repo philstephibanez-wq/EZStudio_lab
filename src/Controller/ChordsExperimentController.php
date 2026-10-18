@@ -3,7 +3,7 @@
 namespace App\Controller;
 
 use App\Service\ChordsExperimentService;
-use App\Service\ChordsDnaExecutionService;
+use App\Service\ChordsExecutionService;
 use App\Service\AnalysisRunRegistry;
 use App\Service\LabCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -48,7 +48,7 @@ final class ChordsExperimentController extends AbstractController
         Request $request,
         LabCatalog $catalog,
         ChordsExperimentService $experiments,
-        ChordsDnaExecutionService $execution,
+        ChordsExecutionService $execution,
     ): Response {
         $songId = (int)$request->request->get('song', 0);
         $parentRunId = (int)$request->request->get('parent_stems_run_id', 0);
@@ -81,7 +81,7 @@ final class ChordsExperimentController extends AbstractController
         }
 
         return new RedirectResponse(
-            $this->generateUrl('dna_run', ['id' => (int)$run['id']])
+            $this->generateUrl('scientific_run', ['id' => (int)$run['id']])
         );
     }
 }

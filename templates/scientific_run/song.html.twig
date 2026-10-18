@@ -20,7 +20,7 @@
 <td>{{ run.engine_name ?: '—' }}{% if run.engine_version %} · {{ run.engine_version }}{% endif %}</td>
 <td>{{ run.model_name ?: '—' }}</td>
 <td>{{ run.created_at }}</td>
-<td><a class="button secondary" href="{{ path('dna_run',{id:run.id}) }}">Preset</a></td>
+<td><a class="button secondary" href="{{ path('scientific_run',{id:run.id}) }}">Preset</a></td>
 </tr>
 {% else %}
 <tr><td colspan="7">Aucun run Preset enregistré pour cette chanson.</td></tr>

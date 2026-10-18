@@ -9,7 +9,7 @@ template = (ROOT / "templates/workbench/home.html.twig").read_text(encoding="utf
 for needle in [
     "name: 'profile_analyze_all'",
     "analyzeAllProfiles(",
-    "ProfileDnaExecutionService $execution",
+    "ProfileExecutionService $execution",
     "$runRegistry->createRun(",
     "$execution->queue(",
     "activeAnalysisJobsForSongsKind($songIds, 'profile')",

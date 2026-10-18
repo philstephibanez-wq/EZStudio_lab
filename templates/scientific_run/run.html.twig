@@ -6,7 +6,7 @@
 <h1>Preset {{ run.public_id }}</h1>
 <div class="meta">{{ run.title }}{% if run.artist %} · {{ run.artist }}{% endif %} · {{ run.item|upper }} · {{ run.state }}</div>
 </div>
-<a class="button secondary" href="{{ path('dna_run_json',{id:run.id}) }}">JSON</a>
+<a class="button secondary" href="{{ path('scientific_run_json',{id:run.id}) }}">JSON</a>
 </div>
 
 <div class="card">
@@ -33,7 +33,7 @@
 <td><code>{{ p.public_id }}</code></td>
 <td>{{ p.item|upper }}</td>
 <td>{{ p.engine_name ?: '—' }}</td>
-<td><a class="button secondary" href="{{ path('dna_run',{id:p.id}) }}">Ouvrir</a></td>
+<td><a class="button secondary" href="{{ path('scientific_run',{id:p.id}) }}">Ouvrir</a></td>
 </tr>
 {% endfor %}
 </tbody></table>
@@ -89,7 +89,7 @@
 <td><code>{{ c.public_id }}</code></td>
 <td>{{ c.item|upper }}</td>
 <td>{{ c.engine_name ?: '—' }}</td>
-<td><a class="button secondary" href="{{ path('dna_run',{id:c.id}) }}">Ouvrir</a></td>
+<td><a class="button secondary" href="{{ path('scientific_run',{id:c.id}) }}">Ouvrir</a></td>
 </tr>
 {% endfor %}
 </tbody></table>

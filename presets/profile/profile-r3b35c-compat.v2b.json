@@ -208,7 +208,8 @@
       "thresholds": {},
       "weights": {},
       "implementation": {
-        "callable": "modules.semantic_clap_open_vocab:run"
+        "callable": "modules.semantic_clap_open_vocab:run",
+        "module_config": "profile/semantic.clap-open-vocabulary.r3b35c.json"
       },
       "model": "laion/clap-htsat-unfused",
       "device": "cuda:0",

@@ -2,8 +2,8 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);
-$dna=file_get_contents($root.'/src/Service/DnaRegistry.php');
-$sync=file_get_contents($root.'/src/Service/StemsDnaSync.php');
+$registry=file_get_contents($root.'/src/Service/AnalysisRunRegistry.php');
+$sync=file_get_contents($root.'/src/Service/StemsScientificRunSync.php');
 $chords=file_get_contents($root.'/src/Service/ChordsExperimentService.php');
 $controller=file_get_contents($root.'/src/Controller/ChordsExperimentController.php');
 $stemsController=file_get_contents($root.'/src/Controller/StemsLabController.php');
@@ -13,7 +13,7 @@ $twig=file_get_contents($root.'/templates/lab/chords_experiment.html.twig');
 foreach ([
  'findByAlias','setState','artifactsForRun','runsForSongItem'
 ] as $needle) {
- if(!str_contains($dna,$needle)) throw new RuntimeException('dna_missing:'.$needle);
+ if(!str_contains($registry,$needle)) throw new RuntimeException('run_registry_missing:'.$needle);
 }
 foreach ([
  'lead_vocals','backing_vocals','hash_file(\'sha256\'','registerArtifact'
@@ -32,7 +32,7 @@ foreach ([
  if(!str_contains($controller,$needle)) throw new RuntimeException('controller_missing:'.$needle);
 }
 foreach ([
- 'technical_job_id','StemsDnaSync','setAlias','setState'
+ 'StemsExecutionService','AnalysisRunRegistry'
 ] as $needle) {
  if(!str_contains($stemsController,$needle)) throw new RuntimeException('stems_controller_missing:'.$needle);
 }
@@ -50,4 +50,4 @@ foreach ([
  if(!str_contains($twig,$needle)) throw new RuntimeException('twig_missing:'.$needle);
 }
 
-echo "EZSTUDIO_STEMS_CHORDS_DNA_R3B4_CONTRACT_OK\n";
+echo "EZSTUDIO_STEMS_CHORDS_PRESETS_R3B4_CONTRACT_OK\n";

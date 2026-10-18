@@ -79,7 +79,7 @@
       <span class="badge {{ selected_stems_run.state == 'done' ? 'ok' : 'warn' }}">{{ selected_stems_run.state }}</span>
       <code>{{ selected_stems_run.public_id }}</code>
       <span class="meta">{{ selected_stems_run.audio_artifacts|length }} piste(s) audio</span>
-      <a href="{{ path('dna_run',{id:selected_stems_run.id}) }}">Preset</a>
+      <a href="{{ path('scientific_run',{id:selected_stems_run.id}) }}">Preset</a>
     </div>
 
     {% if selected_stems_run.state == 'done' and selected_stems_run.audio_artifacts %}

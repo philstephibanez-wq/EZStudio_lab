@@ -9,9 +9,9 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
-final class DnaController extends AbstractController
+final class ScientificRunController extends AbstractController
 {
-    #[Route('/dna/song/{id<\d+>}', name: 'dna_song', methods: ['GET'])]
+    #[Route('/scientific-runs/song/{id<\d+>}', name: 'scientific_run_song', methods: ['GET'])]
     public function song(int $id, Database $db, AnalysisRunRegistry $runRegistry): Response
     {
         $stmt = $db->pdo()->prepare(
@@ -24,13 +24,13 @@ final class DnaController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        return $this->render('dna/song.html.twig', [
+        return $this->render('scientific_run/song.html.twig', [
             'song' => $song,
             'runs' => $runRegistry->runsForSong($id),
         ]);
     }
 
-    #[Route('/dna/run/{id<\d+>}', name: 'dna_run', methods: ['GET'])]
+    #[Route('/scientific-runs/run/{id<\d+>}', name: 'scientific_run', methods: ['GET'])]
     public function run(int $id, AnalysisRunRegistry $runRegistry): Response
     {
         $run = $runRegistry->run($id);
@@ -38,13 +38,13 @@ final class DnaController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        return $this->render('dna/run.html.twig', [
+        return $this->render('scientific_run/run.html.twig', [
             'run' => $run,
             'lineage' => $runRegistry->lineage($id),
         ]);
     }
 
-    #[Route('/dna/run/{id<\d+>}.json', name: 'dna_run_json', methods: ['GET'])]
+    #[Route('/scientific-runs/run/{id<\d+>}.json', name: 'scientific_run_json', methods: ['GET'])]
     public function runJson(int $id, AnalysisRunRegistry $runRegistry): JsonResponse
     {
         $run = $runRegistry->run($id);
@@ -58,10 +58,10 @@ final class DnaController extends AbstractController
         ]);
     }
 
-    #[Route('/dna/compare/{item<profile|stems|chords|lyrics>}', name: 'dna_compare', methods: ['GET'])]
+    #[Route('/scientific-runs/compare/{item<profile|stems|chords|lyrics>}', name: 'scientific_run_compare', methods: ['GET'])]
     public function compare(string $item, AnalysisRunRegistry $runRegistry): Response
     {
-        return $this->render('dna/compare.html.twig', [
+        return $this->render('scientific_run/compare.html.twig', [
             'item' => $item,
             'rows' => $runRegistry->compareAcrossSongs($item),
         ]);

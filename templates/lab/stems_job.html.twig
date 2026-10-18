@@ -4,7 +4,7 @@
 <div class="card hero">
 <div>
 <h1>STEMS #{{ job.job_id }} — {{ job.song.title ?? 'Sans titre' }}</h1>
-<div class="meta">{{ job.state }} · {{ job.progress ?? 0 }}%{% if dna_run %} · {{ dna_run.public_id }}{% endif %}</div>
+<div class="meta">{{ job.state }} · {{ job.progress ?? 0 }}%{% if scientific_run %} · {{ scientific_run.public_id }}{% endif %}</div>
 </div>
 <span class="badge {{ job.state == 'done' ? 'ok' : (job.state == 'error' ? 'warn' : '') }}">{{ job.state }}</span>
 </div>
@@ -28,8 +28,8 @@
 <div>Ré-analyse forcée</div><div>{{ job.request.force ?? false ? 'oui' : 'non' }}</div>
 <div>Parent STEMS</div><div>{{ job.request.parent_job_id ?? '—' }}</div>
 <div>Contrat</div><div>{{ job.request.output_contract ?? 'ezstudio.stems.v1' }}</div>
-<div>Run scientifique</div><div>{% if dna_run %}<a href="{{ path('dna_run',{id:dna_run.id}) }}">{{ dna_run.public_id }}</a>{% else %}—{% endif %}</div>
-<div>Artefacts du run</div><div>{{ dna_run ? dna_run.artifacts|length : 0 }}</div>
+<div>Run scientifique</div><div>{% if scientific_run %}<a href="{{ path('scientific_run',{id:scientific_run.id}) }}">{{ scientific_run.public_id }}</a>{% else %}—{% endif %}</div>
+<div>Artefacts du run</div><div>{{ scientific_run ? scientific_run.artifacts|length : 0 }}</div>
 <div>Source</div><div>{{ job.paths.source ?? '—' }}</div>
 <div>Stockage</div><div>{{ job.paths.storage_root ?? '—' }}</div>
 </div>

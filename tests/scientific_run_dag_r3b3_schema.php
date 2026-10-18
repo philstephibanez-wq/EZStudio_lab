@@ -30,4 +30,4 @@ foreach ($required as $table) {
     }
 }
 
-echo "EZSTUDIO_DAG_ADN_R3B3_SCHEMA_CONTRACT_OK\n";
+echo "EZSTUDIO_SCIENTIFIC_RUN_DAG_R3B3_SCHEMA_CONTRACT_OK\n";

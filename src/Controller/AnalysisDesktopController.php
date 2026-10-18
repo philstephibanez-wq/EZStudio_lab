@@ -6,11 +6,11 @@ namespace App\Controller;
 
 use App\Service\Database;
 use App\Service\DistributedAnalysisLeaseService;
-use App\Service\ChordsDnaExecutionService;
+use App\Service\ChordsExecutionService;
 use App\Service\LabAnalysisTokenGuard;
-use App\Service\ProfileDnaExecutionService;
+use App\Service\ProfileExecutionService;
 use App\Service\ProfileExternalReviewService;
-use App\Service\StemsDnaExecutionService;
+use App\Service\StemsExecutionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,10 +24,10 @@ final class AnalysisDesktopController extends AbstractController
         private readonly LabAnalysisTokenGuard $guard,
         private readonly Database $db,
         private readonly DistributedAnalysisLeaseService $distributed,
-        private readonly ProfileDnaExecutionService $profileDna,
+        private readonly ProfileExecutionService $profileExecution,
         private readonly ProfileExternalReviewService $profileExternalReview,
-        private readonly ChordsDnaExecutionService $chordsDna,
-        private readonly StemsDnaExecutionService $stemsDna,
+        private readonly ChordsExecutionService $chordsExecution,
+        private readonly StemsExecutionService $stemsExecution,
     ) {}
 
     #[Route('/profile/reviews/queue', name: 'lab_internal_profile_review_queue', methods: ['GET'])]

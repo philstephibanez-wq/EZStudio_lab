@@ -28,6 +28,7 @@ class ModuleConfig:
     parameters: dict[str, Any] = field(default_factory=dict)
     thresholds: dict[str, Any] = field(default_factory=dict)
     weights: dict[str, Any] = field(default_factory=dict)
+    resolved_module_config: Any = None
 
 
 @dataclass

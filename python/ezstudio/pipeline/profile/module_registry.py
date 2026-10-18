@@ -67,6 +67,15 @@ class ModuleRegistry:
             if isinstance(runtime.get("model"), dict):
                 model.update(runtime["model"])
 
+            parameters = spec.parameters
+            # Use exactly the immutable config resolved by the execution registry.
+            # Capture its full scientific content, not merely the filename/phase hints.
+            if spec.resolved_module_config is not None:
+                parameters = {
+                    **spec.parameters,
+                    "effective_module_config": spec.resolved_module_config.data,
+                    "effective_module_config_sha256": spec.resolved_module_config.sha256,
+                }
             modules.append(
                 {
                     "id": spec.module_id,
@@ -76,7 +85,7 @@ class ModuleRegistry:
                     "engine": engine,
                     "model": model,
                     "device": runtime.get("device") or spec.device,
-                    "parameters": spec.parameters,
+                    "parameters": parameters,
                     "thresholds": spec.thresholds,
                     "weights": spec.weights,
                     "implementation": {

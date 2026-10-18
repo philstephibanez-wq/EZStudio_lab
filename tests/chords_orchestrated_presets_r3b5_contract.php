@@ -4,7 +4,7 @@ declare(strict_types=1);
 $root=dirname(__DIR__);
 $db=file_get_contents($root.'/src/Service/Database.php');
 $desktop=file_get_contents($root.'/src/Controller/AnalysisDesktopController.php');
-$exec=file_get_contents($root.'/src/Service/ChordsDnaExecutionService.php');
+$exec=file_get_contents($root.'/src/Service/ChordsExecutionService.php');
 $controller=file_get_contents($root.'/src/Controller/ChordsExperimentController.php');
 $twig=file_get_contents($root.'/templates/lab/chords_experiment.html.twig');
 
@@ -17,7 +17,7 @@ foreach ([
     if (!str_contains($db,$needle)) throw new RuntimeException('db_missing:'.$needle);
 }
 foreach ([
-    'ChordsDnaExecutionService',
+    'ChordsExecutionService',
     'progressFromJob',
     'completeFromJob',
     'failFromJob',
@@ -39,4 +39,4 @@ if (!str_contains($controller,'$execution->queue')) {
 if (!str_contains($twig,'Lancer l’analyse CHORDS versionnée')) {
     throw new RuntimeException('twig_launch_button_missing');
 }
-echo "EZSTUDIO_CHORDS_ORCHESTRATED_DNA_R3B5_PHP_CONTRACT_OK\n";
+echo "EZSTUDIO_CHORDS_ORCHESTRATED_PRESETS_R3B5_PHP_CONTRACT_OK\n";

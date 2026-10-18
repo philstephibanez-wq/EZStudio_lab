@@ -6,7 +6,7 @@ use App\Service\AnalysisRunRegistry;
 use App\Service\CatalogService;
 use App\Service\Database;
 use App\Service\DistributedAnalysisLeaseService;
-use App\Service\ProfileDnaExecutionService;
+use App\Service\ProfileExecutionService;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -56,7 +56,7 @@ final class WorkbenchController extends AbstractController
     public function analyzeAllProfiles(
         WorkbenchCatalog $catalog,
         AnalysisRunRegistry $runRegistry,
-        ProfileDnaExecutionService $execution,
+        ProfileExecutionService $execution,
         Database $db,
     ): Response {
         $queued = 0;

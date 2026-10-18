@@ -2,7 +2,7 @@
 
 namespace App\Service;
 
-final class ChordsDnaExecutionService
+final class ChordsExecutionService
 {
     public function __construct(
         private readonly Database $db,

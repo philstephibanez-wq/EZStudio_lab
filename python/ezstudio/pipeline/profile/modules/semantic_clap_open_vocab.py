@@ -11,21 +11,13 @@ if str(_PYTHON_ROOT) not in sys.path:
 
 from module import ModuleContext
 from ezstudio.runtime.adapters.clap_zero_shot import run_clap_zero_shot
-from ezstudio.runtime.module_config import load_module_config
+from module import ModuleConfig
 
 
-CONFIG_RELATIVE_PATH = Path(
-    "presets/profile/semantic.clap-open-vocabulary.r3b35c.json"
-)
-
-
-def _config_path() -> Path:
-    repo_root = Path(__file__).resolve().parents[5]
-    return repo_root / CONFIG_RELATIVE_PATH
-
-
-def run(context: ModuleContext) -> dict:
-    module_config = load_module_config(_config_path())
+def run(context: ModuleContext, config: ModuleConfig) -> dict:
+    module_config = config.resolved_module_config
+    if module_config is None:
+        raise RuntimeError("profile_clap_resolved_module_config_missing")
     result, warnings = run_clap_zero_shot(
         context.source,
         context.model_root,

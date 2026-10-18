@@ -61,7 +61,7 @@
 </thead>
 <tbody>
 {% for j in jobs %}
-{% set d = dna_runs[j.job_id] ?? null %}
+{% set d = scientific_runs[j.job_id] ?? null %}
 <tr>
 <td><a class="run-link" href="{{ path('lab_stems_job',{id:j.job_id}) }}">#{{ j.job_id }}</a></td>
 <td>{% if d %}<code>{{ d.public_id }}</code>{% else %}—{% endif %}</td>
@@ -72,7 +72,7 @@
 <td>{{ j.request.parent_job_id ?? '—' }}</td>
 <td>
 {% if d %}
-<a class="button secondary" href="{{ path('dna_run',{id:d.id}) }}">Preset</a>
+<a class="button secondary" href="{{ path('scientific_run',{id:d.id}) }}">Preset</a>
 {% endif %}
 </td>
 </tr>
@@ -81,7 +81,7 @@
 {% endfor %}
 </tbody>
 </table>
-{% if dna_runs|length %}
+{% if scientific_runs|length %}
 <p><a class="button" href="{{ path('lab_chords_experiment',{song:selected_song.id}) }}">Préparer une analyse CHORDS</a></p>
 {% endif %}
 </div>

@@ -90,7 +90,7 @@ Les deux sélections sont indépendantes et font partie de le Preset du run. Mod
 {% for r in chords_runs %}
 <tr>
 <td><code>{{ r.public_id }}</code></td><td>{{ r.state }}</td><td>{{ r.engine_name ?: '—' }}</td><td>{{ r.created_at }}</td>
-<td><a class="button secondary" href="{{ path('dna_run',{id:r.id}) }}">Ouvrir</a></td>
+<td><a class="button secondary" href="{{ path('scientific_run',{id:r.id}) }}">Ouvrir</a></td>
 </tr>
 {% else %}
 <tr><td colspan="5">Aucun run CHORDS.</td></tr>
