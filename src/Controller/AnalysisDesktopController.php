@@ -113,9 +113,9 @@ final class AnalysisDesktopController extends AbstractController
         $value=filter_var($payload['progress']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0,'max_range'=>100]]);
         if($value===false) return $this->json(['error'=>'progress_must_be_0_100'],422);
         if(!$this->db->updateAnalysisJobProgress($id,(int)$value)) return $this->json(['error'=>'job_not_running'],409);
-        $this->profileDna->progressFromJob($id,(int)$value);
-        $this->stemsDna->progressFromJob($id,(int)$value);
-        $this->chordsDna->progressFromJob($id,(int)$value);
+        $this->profileExecution->progressFromJob($id,(int)$value);
+        $this->stemsExecution->progressFromJob($id,(int)$value);
+        $this->chordsExecution->progressFromJob($id,(int)$value);
         return $this->json(['job_id'=>$id,'status'=>'running','progress'=>(int)$value]);
     }
 
@@ -125,9 +125,9 @@ final class AnalysisDesktopController extends AbstractController
         $this->guard->assertAuthorized($request);
         try{
             $this->db->completeAnalysisJob($id);
-            $this->profileDna->completeFromJob($id);
-            $this->stemsDna->completeFromJob($id);
-            $this->chordsDna->completeFromJob($id);
+            $this->profileExecution->completeFromJob($id);
+            $this->stemsExecution->completeFromJob($id);
+            $this->chordsExecution->completeFromJob($id);
         }catch(\RuntimeException $e){return $this->json(['error'=>$e->getMessage()],409);}
         return $this->json(['job_id'=>$id,'status'=>'completed','progress'=>100]);
     }
@@ -156,9 +156,9 @@ final class AnalysisDesktopController extends AbstractController
         $payload=$request->toArray();
         $error=trim((string)($payload['error']??'orchestrator_job_failed'));
         $this->db->failAnalysisJob($id,$error);
-        $this->profileDna->failFromJob($id,$error);
-        $this->stemsDna->failFromJob($id,$error);
-        $this->chordsDna->failFromJob($id,$error);
+        $this->profileExecution->failFromJob($id,$error);
+        $this->stemsExecution->failFromJob($id,$error);
+        $this->chordsExecution->failFromJob($id,$error);
         return $this->json(['job_id'=>$id,'status'=>'failed']);
     }
 
@@ -282,9 +282,9 @@ final class AnalysisDesktopController extends AbstractController
             if (!$this->db->updateAnalysisJobProgress($id, (int)$value)) {
                 return $this->json(['error' => 'job_not_running'], 409);
             }
-            $this->profileDna->progressFromJob($id, (int)$value);
-            $this->stemsDna->progressFromJob($id, (int)$value);
-            $this->chordsDna->progressFromJob($id, (int)$value);
+            $this->profileExecution->progressFromJob($id, (int)$value);
+            $this->stemsExecution->progressFromJob($id, (int)$value);
+            $this->chordsExecution->progressFromJob($id, (int)$value);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         }
@@ -307,9 +307,9 @@ final class AnalysisDesktopController extends AbstractController
         try {
             $this->distributed->assertLease($id, $workerId, $leaseToken);
             $this->db->completeAnalysisJob($id);
-            $this->profileDna->completeFromJob($id);
-            $this->stemsDna->completeFromJob($id);
-            $this->chordsDna->completeFromJob($id);
+            $this->profileExecution->completeFromJob($id);
+            $this->stemsExecution->completeFromJob($id);
+            $this->chordsExecution->completeFromJob($id);
             $this->distributed->releaseLease($id, $workerId, $leaseToken);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
@@ -356,9 +356,9 @@ final class AnalysisDesktopController extends AbstractController
         try {
             $this->distributed->assertLease($id, $workerId, $leaseToken);
             $this->db->failAnalysisJob($id, $error);
-            $this->profileDna->failFromJob($id, $error);
-            $this->stemsDna->failFromJob($id, $error);
-            $this->chordsDna->failFromJob($id, $error);
+            $this->profileExecution->failFromJob($id, $error);
+            $this->stemsExecution->failFromJob($id, $error);
+            $this->chordsExecution->failFromJob($id, $error);
             $this->distributed->releaseLease($id, $workerId, $leaseToken);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
