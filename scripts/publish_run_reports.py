@@ -188,7 +188,7 @@ def main():
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "benchmark.sqlite"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--producer", choices=("all", "lab", "assistant"), default="all")
-    parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive for bounded checks")
+    parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args()
     if args.limit < 0:
@@ -198,6 +198,7 @@ def main():
     state_file = args.state_dir / "published.json"
     state = {} if args.dry_run else _load_state(state_file)
     checked = 0
+    attempted = 0
     published = 0
     unchanged = 0
     failed = 0
@@ -205,13 +206,14 @@ def main():
         for path, report in collect(db):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
-            if args.limit and checked >= args.limit:
-                break
             checked += 1
             digest = _digest(report)
             if not args.dry_run and state.get(path) == digest:
                 unchanged += 1
                 continue
+            if args.limit and attempted >= args.limit:
+                break
+            attempted += 1
             try:
                 if args.dry_run:
                     status = "dry-run"
@@ -225,7 +227,7 @@ def main():
                 failed += 1
                 print(f"failed: {path}: {type(exc).__name__}: {str(exc)[:200]}",
                       file=sys.stderr, flush=True)
-    print(f"REPORTS checked={checked} published={published} unchanged={unchanged} failed={failed}", flush=True)
+    print(f"REPORTS checked={checked} attempted={attempted} published={published} unchanged={unchanged} failed={failed}", flush=True)
     return 1 if failed else 0
 
 
