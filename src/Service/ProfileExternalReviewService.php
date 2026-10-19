@@ -38,6 +38,7 @@ SQL);
     public function queue(int $limit = 100): array
     {
         $this->ensureSchema();
+        (new ProfileAiRequestService($this->db))->get(0);
         $effectiveLimit = max(1, min(500, $limit));
 
         $sql = <<<'SQL'
@@ -78,11 +79,14 @@ JOIN (
 ) latest ON latest.max_run_id=sr.id
 WHERE sr.item='profile'
   AND sr.state='done'
-  AND NOT EXISTS (
-      SELECT 1
-      FROM profile_external_revisions er
-      WHERE er.run_id=sr.id
-        AND er.status='completed'
+  AND (
+    NOT EXISTS (
+      SELECT 1 FROM profile_external_revisions er
+      WHERE er.run_id=sr.id AND er.status='completed'
+    ) OR EXISTS (
+      SELECT 1 FROM profile_ai_requests req
+      WHERE req.run_id=sr.id AND req.status IN ('pending','running')
+    )
   )
 ORDER BY sr.id ASC
 LIMIT ?
@@ -117,6 +121,34 @@ SQL;
         }
 
         return $rows;
+    }
+
+    public function reviewItemForRun(int $runId): ?array
+    {
+        $stmt = $this->db->pdo()->prepare(<<<'SQL'
+SELECT sr.id AS run_id,sr.public_id,sr.song_id,sr.state,sr.engine_name,sr.engine_version,
+       sr.model_name,sr.checkpoint,sr.config_json,sr.metrics_json,sr.diagnostics_json,
+       sr.finished_at,s.title,s.artist,s.audio_sha256
+FROM scientific_runs sr JOIN songs s ON s.id=sr.song_id
+WHERE sr.id=? AND sr.item='profile' AND sr.state='done'
+LIMIT 1
+SQL);
+        $stmt->execute([$runId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        return [
+            'schema'=>'ezstudio.profile-review-queue-item.v1',
+            'run_id'=>(int)$row['run_id'], 'public_id'=>(string)$row['public_id'],
+            'song_id'=>(int)$row['song_id'], 'title'=>(string)$row['title'],
+            'artist'=>(string)$row['artist'],'audio_sha256'=>(string)$row['audio_sha256'],
+            'state'=>(string)$row['state'],
+            'engine'=>['name'=>(string)$row['engine_name'],'version'=>(string)$row['engine_version'],
+                'model'=>(string)$row['model_name'],'checkpoint'=>(string)$row['checkpoint']],
+            'config'=>$this->decodeObject((string)$row['config_json']),
+            'metrics'=>$this->decodeObject((string)$row['metrics_json']),
+            'diagnostics'=>$this->decodeObject((string)$row['diagnostics_json']),
+            'finished_at'=>$row['finished_at']!==null?(string)$row['finished_at']:null,
+        ];
     }
 
     public function save(array $payload): array

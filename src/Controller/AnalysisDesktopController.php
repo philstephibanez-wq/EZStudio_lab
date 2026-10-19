@@ -51,6 +51,15 @@ final class AnalysisDesktopController extends AbstractController
         ]);
     }
 
+    #[Route('/profile/reviews/run/{id<\d+>}', name: 'lab_internal_profile_review_run', methods: ['GET'])]
+    public function profileReviewRun(Request $request, int $id): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $item = $this->profileExternalReview->reviewItemForRun($id);
+        if ($item === null) return $this->json(['error'=>'profile_run_not_available'],404);
+        return $this->json(['item'=>$item]);
+    }
+
     #[Route('/profile/reviews', name: 'lab_internal_profile_review_submit', methods: ['POST'])]
     public function profileReviewSubmit(Request $request): JsonResponse
     {

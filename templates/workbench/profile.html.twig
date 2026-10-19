@@ -17,6 +17,7 @@
 {% endif %}
 
 {% if selected_profile_run %}
+
   {% set job_status = profile_job and profile_job.status is defined ? profile_job.status : selected_profile_run.state %}
   {% set profile_percent = profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0) %}
   {% set profile_active = job_status in ['queued','running','cancel_requested'] or selected_profile_run.state in ['queued','running'] %}
@@ -62,20 +63,21 @@
   </div>
   {% if profile_summary.genres %}<div class="summary-line"><strong>Genres suggérés</strong> · {% for x in profile_summary.genres %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   {% if profile_summary.moods %}<div class="summary-line"><strong>Ambiances</strong> · {% for x in profile_summary.moods %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
-  {% if profile_summary.instrumentation %}<div class="summary-line"><strong>Instrumentation probable</strong> · {% for x in profile_summary.instrumentation %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if profile_summary.instrumentation %}<div class="summary-line"><strong>Instrumentation probable</strong> · {% for x in profile_summary.instrumentation %}{{ x.label }} ({% if x.score is not null %}{{ (x.score*100)|number_format(1) }} %{% else %}score non calibré{% endif %}){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   {% if profile_summary.voice %}<div class="summary-line"><strong>Voix</strong> · {% for x in profile_summary.voice %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   {% if profile_summary.audioset_contextual %}<div class="summary-line"><strong>Autres éléments sonores conservés dans le résultat d’analyse</strong> · {{ profile_summary.audioset_contextual|join(', ') }}</div>{% endif %}
   <div class="meta" style="margin-top:10px">{{ profile_summary.notice }}</div>
 </div>
 <style>
-.profile-summary .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.profile-summary .summary-grid>div{background:#f5f6f7;border:1px solid var(--line);border-radius:5px;padding:8px 10px}.profile-summary .summary-grid span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}.profile-summary .summary-grid strong{font-size:13px}.profile-summary .summary-line{font-size:12px;line-height:1.55;padding:4px 0}@media(max-width:900px){.profile-summary .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.profile-summary .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.profile-summary .summary-grid>div{background:#1d2935;color:#ecf3fa;border:1px solid var(--line);border-radius:5px;padding:8px 10px}.profile-summary .summary-grid span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}.profile-summary .summary-grid strong{font-size:13px;color:#ecf3fa;overflow-wrap:anywhere}.profile-summary p{overflow-wrap:anywhere;white-space:normal}.profile-summary{min-width:0;overflow-wrap:anywhere}.profile-summary .summary-line{font-size:12px;line-height:1.55;padding:4px 0}@media(max-width:900px){.profile-summary .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 {% endif %}
 
 {# PROFILE_R3D_AI_REVIEW — consultation, aucune promotion de preset #}
 {% if selected_profile_run.state == 'done' %}
     <div class="card profile-ai-review">
-        <h2>Révision IA du profil</h2>
+        {% include 'workbench/profile_ai_button.html.twig' %}
+<h2>Révision IA du profil</h2>
         <p class="meta">
             Avis consultatif de l’Assistant, distinct des mesures scientifiques.
             Une inférence terminée ne constitue pas une validation externe.

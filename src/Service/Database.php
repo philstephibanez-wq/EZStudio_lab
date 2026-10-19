@@ -658,6 +658,12 @@ SQL;
 
     private function isDistributedAnalysisJob(array $job): bool
     {
+        // Assistant jobs are exclusively consumed by the dedicated Qwen worker.
+        // Never expose them to Orchestrator's scientific queue or claim.
+        if ((string)($job['kind'] ?? '') === 'assistant.profile.review') {
+            return true;
+        }
+
         $request = json_decode((string)($job['request_json'] ?? ''), true);
         if (!is_array($request)) {
             return false;
