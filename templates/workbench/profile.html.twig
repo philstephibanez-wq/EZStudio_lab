@@ -89,6 +89,10 @@
             </p>
         {% else %}
             {% for revision in profile_external_revisions %}
+                {% if loop.index == 2 %}
+                    <details class="profile-ai-history">
+                        <summary>Historique des révisions ({{ profile_external_revisions|length - 1 }})</summary>
+                {% endif %}
                 {% set ai = revision.consensus.assistant_ai ?? {} %}
                 {% set comparison = revision.comparison.assistant_ai ?? {} %}
                 {% set dimensions = comparison.dimensions ?? {} %}
@@ -206,6 +210,9 @@
                     </p>
                 </section>
             {% endfor %}
+            {% if profile_external_revisions|length > 1 %}
+                </details>
+            {% endif %}
         {% endif %}
     </div>
     {% if profile_validation_subjects %}
