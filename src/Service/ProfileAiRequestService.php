@@ -59,6 +59,29 @@ final class ProfileAiRequestService
         }
     }
 
+    /** Read-only canonical AI job history for Orchestrator; no queue migration. */
+    public function recent(int $limit = 80): array
+    {
+        $limit = max(1, min(100, $limit));
+        $sql = "SELECT aj.id AS job_id, aj.scientific_run_id AS run_id,
+                       aj.status, aj.progress, aj.error AS message,
+                       aj.created_at, aj.updated_at,
+                       aj.song_id, s.title AS song_title
+                FROM analysis_jobs aj
+                LEFT JOIN songs s ON s.id = aj.song_id
+                WHERE aj.kind = 'assistant.profile.review'
+                ORDER BY aj.updated_at DESC, aj.id DESC LIMIT ?";
+        $stmt = $this->pdo()->prepare($sql);
+        $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map(static function (array $row): array {
+            foreach (['job_id', 'run_id', 'progress', 'song_id'] as $key) {
+                if ($row[$key] !== null) $row[$key] = (int)$row[$key];
+            }
+            return $row;
+        }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
     public function pending(): array
     {
         $this->migrateLegacy();

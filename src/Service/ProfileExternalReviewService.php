@@ -185,6 +185,23 @@ SQL);
         $sources = is_array($payload['sources'] ?? null) ? array_values($payload['sources']) : [];
         $consensus = is_array($payload['consensus'] ?? null) ? $payload['consensus'] : [];
         $comparison = is_array($payload['comparison'] ?? null) ? $payload['comparison'] : [];
+        // Advisory PROFILE coverage is metadata, never an external validation.
+        $ai = is_array($comparison['assistant_ai'] ?? null) ? $comparison['assistant_ai'] : [];
+        $coverage = is_array($ai['coverage'] ?? null) ? $ai['coverage'] : [];
+        if (($coverage['schema'] ?? null) === 'ezs.profile-ai-coverage.v1') {
+            $scored = filter_var($coverage['scored_count'] ?? null, FILTER_VALIDATE_INT);
+            $total = filter_var($coverage['total_count'] ?? null, FILTER_VALIDATE_INT);
+            if ($scored === false || $total !== 5 || $scored < 0 || $scored > 5) {
+                throw new \InvalidArgumentException('profile_ai_coverage_invalid');
+            }
+            $comparison['assistant_ai']['coverage_summary'] = [
+                'scored' => $scored,
+                'total' => 5,
+                'complete' => $scored === 5,
+                'advisory_only' => true,
+            ];
+        }
+
 
         if ($status === 'completed' && $sources === []) {
             throw new \InvalidArgumentException('profile_external_review_completed_requires_sources');

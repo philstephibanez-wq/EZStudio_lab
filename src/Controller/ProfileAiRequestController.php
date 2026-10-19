@@ -40,6 +40,17 @@ final class ProfileAiRequestController extends AbstractController
         return $this->json(['request'=>$this->queue->get($id)]);
     }
 
+    #[Route('/internal/analysis/desktop/profile/ai-requests/recent', name: 'lab_internal_profile_ai_recent', methods: ['GET'])]
+    public function recent(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $limit = filter_var($request->query->get('limit', 80), FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 100]]);
+        if ($limit === false) return $this->json(['error' => 'invalid_limit'], 422);
+        return $this->json(['schema' => 'ezstudio.profile-ai-history.v1',
+            'jobs' => $this->queue->recent((int)$limit)]);
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests',name:'lab_internal_profile_ai_requests',methods:['GET'])]
     public function pending(Request $request): JsonResponse
     {
