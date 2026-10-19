@@ -27,7 +27,7 @@ FORBIDDEN = re.compile(
     r"raw|base64|binary|waveform|embedding|model.path",
     re.I,
 )
-SAFE_TEXT = re.compile(r"^[\\w .,:;()/%+&?!°#'’=\\-]{0,250}$", re.UNICODE)
+SAFE_TEXT = re.compile(r"^[\w .,:;()/%+&?!°#'’=-]{0,250}$", re.UNICODE)
 MAX_DEPTH = 7
 MAX_ITEMS = 40
 MAX_REPORT = 100_000
@@ -69,7 +69,7 @@ def collect(db):
     runs = db.execute(
         "SELECT id, public_id, item, state, engine_name, engine_version, "
         "metrics_json, diagnostics_json, created_at, finished_at "
-        "FROM scientific_runs ORDER BY id"
+        "FROM scientific_runs ORDER BY id DESC"
     )
     for run in runs:
         phase = PHASES.get(run["item"])
@@ -96,7 +96,7 @@ def collect(db):
     revisions = db.execute(
         "SELECT id, run_id, reviewer, status, consensus_json, "
         "comparison_json, confidence, created_at, updated_at "
-        "FROM profile_external_revisions ORDER BY id"
+        "FROM profile_external_revisions ORDER BY id DESC"
     )
     for rev in revisions:
         report = {
@@ -154,7 +154,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "benchmark.sqlite"))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--limit", type=int, default=250)
     args = parser.parse_args()
     if args.limit < 1 or args.limit > 1000:
         parser.error("--limit must be 1..1000")
