@@ -187,6 +187,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "benchmark.sqlite"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--producer", choices=("all", "lab", "assistant"), default="all")
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive for bounded checks")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args()
@@ -202,6 +203,8 @@ def main():
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
         for path, report in collect(db):
+            if args.producer != "all" and report["producer"] != args.producer:
+                continue
             if args.limit and checked >= args.limit:
                 break
             checked += 1
