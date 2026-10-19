@@ -15,9 +15,12 @@ try {
     "[$timestamp] REPORT_EXPORT_BEGIN" | Out-File -FilePath $log -Append -Encoding utf8
     Push-Location $root
     try {
-        & python (Join-Path $root 'scripts\publish_run_reports.py') --state-dir $stateDir 2>&1 |
-            Out-File -FilePath $log -Append -Encoding utf8
-        $exitCode = $LASTEXITCODE
+        $exitCode = 0
+        foreach ($producer in @('assistant', 'lab')) {
+            & python (Join-Path $root 'scripts\publish_run_reports.py') --producer $producer --limit 15 --state-dir $stateDir 2>&1 |
+                Out-File -FilePath $log -Append -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { $exitCode = 1 }
+        }
     } finally {
         Pop-Location
     }
