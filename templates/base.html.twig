@@ -92,7 +92,7 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 <body>
 <header>
 <div class="header-inner">
-  <a class="brand" href="{{ path('workbench_home') }}">EZStudio_lab <small>V1.3a · Audio Analysis Laboratory</small></a>
+  <a class="brand" href="{{ path('workbench_home') }}">EZStudio_lab <small>v{{ lab_version }} · Audio Analysis Laboratory</small></a>
   {% set route_name = app.request.attributes.get('_route') %}
 {% set current_song_id =
   (selected_song is defined and selected_song ? selected_song.id :
