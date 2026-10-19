@@ -53,7 +53,7 @@
 
 {% if profile_summary %}
 <div class="card profile-summary">
-  <h2>Résumé français</h2>
+  <h2>Résumé du profil</h2>
   <p style="font-size:14px;line-height:1.55;margin:0 0 12px">{{ profile_summary.text }}</p>
   <div class="summary-grid">
     <div><span>Tempo</span><strong>{% if profile_summary.tempo_bpm is not null %}{{ profile_summary.tempo_bpm|number_format(0) }} BPM · {{ profile_summary.tempo_qualifier }}{% else %}—{% endif %}</strong></div>
