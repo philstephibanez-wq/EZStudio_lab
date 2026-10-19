@@ -130,6 +130,16 @@ def gh(*args, input_json=None):
 def publish(path, report):
     raw = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     if len(raw) > MAX_REPORT:
+        report = dict(report)
+        report["truncated"] = True
+        if "diagnostics" in report:
+            report["diagnostics"] = {"note": "Large diagnostics retained only on MAIN."}
+        if "consensus" in report:
+            report["consensus"] = {"note": "Large consensus retained only on MAIN."}
+        if "comparison" in report:
+            report["comparison"] = {"note": "Large comparison retained only on MAIN."}
+        raw = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    if len(raw) > MAX_REPORT:
         raise ValueError("report_exceeds_safety_limit")
     endpoint = f"repos/{DEST}/contents/{path}"
     sha = None
