@@ -25,6 +25,31 @@ class ReportsContract(unittest.TestCase):
         self.assertNotIn("notes", clean)
         self.assertEqual(clean["nested"]["instruments"][0]["label"], "piano")
 
+    def test_exact_target_filters_pending_and_other_runs(self):
+        import sqlite3
+        db = sqlite3.connect(":memory:")
+        db.executescript("""
+            CREATE TABLE scientific_runs (
+                id INTEGER, public_id TEXT, item TEXT, state TEXT, engine_name TEXT,
+                engine_version TEXT, metrics_json TEXT, diagnostics_json TEXT,
+                created_at TEXT, finished_at TEXT);
+            CREATE TABLE profile_external_revisions (
+                id INTEGER, run_id INTEGER, reviewer TEXT, status TEXT, consensus_json TEXT,
+                comparison_json TEXT, confidence REAL, created_at TEXT, updated_at TEXT);
+            INSERT INTO scientific_runs VALUES
+                (153,'abc','profile','done','engine','1','{}','{}','now','now'),
+                (154,'def','profile','running','engine','1','{}','{}','now',NULL);
+            INSERT INTO profile_external_revisions VALUES
+                (30,153,'ai','draft','{}','{}',0.63,'now','now'),
+                (31,153,'ai','draft','{}','{}',0.63,'now','now');
+        """)
+        reports = list(publisher.collect(db))
+        self.assertEqual(
+            [path for path, item in reports if item.get("revision_id") == 31],
+            ["assistant/profile/run-000153/revision-000031.json"],
+        )
+        self.assertFalse(any(item["run_id"] == 154 for _, item in reports))
+
     def test_persistent_state_round_trip(self):
         import tempfile
         with tempfile.TemporaryDirectory() as temp:
