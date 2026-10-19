@@ -25,6 +25,39 @@ class ReportsContract(unittest.TestCase):
         self.assertNotIn("notes", clean)
         self.assertEqual(clean["nested"]["instruments"][0]["label"], "piano")
 
+    def test_persistent_state_round_trip(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "published.json"
+            report = {"producer": "assistant", "revision_id": 30}
+            digest = publisher._digest(report)
+            publisher._save_state(path, {"assistant/profile/run-000153/revision-000030.json": digest})
+            self.assertEqual(
+                publisher._load_state(path)["assistant/profile/run-000153/revision-000030.json"],
+                digest,
+            )
+
+    def test_oversize_fallback(self):
+        import json
+        original = publisher.gh
+        observed = {}
+        def fake_gh(*args, input_json=None):
+            if "--method" not in args:
+                raise RuntimeError("404")
+            observed.update(input_json)
+            return {"content": {}}
+        publisher.gh = fake_gh
+        try:
+            report = {"schema": "ezstudio.run-report.v1", "producer": "lab",
+                      "metrics": {"tempo": 120}, "diagnostics": {"scores": list(range(30000))}}
+            self.assertEqual(publisher.publish("lab/profile/run-000001.json", report), "published")
+            import base64
+            payload = json.loads(base64.b64decode(observed["content"]))
+            self.assertTrue(payload["truncated"])
+            self.assertEqual(payload["metrics"]["tempo"], 120)
+        finally:
+            publisher.gh = original
+
     def test_bounded_report(self):
         clean = publisher.sanitize({"items": [{"score": n} for n in range(300)]})
         self.assertEqual(len(clean["items"]), 40)
