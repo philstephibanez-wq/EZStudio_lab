@@ -15,7 +15,8 @@ import re
 import sqlite3
 import subprocess
 import sys
-import tempfile
+import hashlib
+import time
 
 DEST = "philstephibanez-wq/EZStudio_Run_Reports"
 PHASES = {"profile": "profile", "stems": "stems", "chords": "chords_n", "lyrics": "lyrics"}
@@ -31,6 +32,7 @@ SAFE_TEXT = re.compile(r"^[\w .,:;()/%+&?!°#'’=-]{0,250}$", re.UNICODE)
 MAX_DEPTH = 7
 MAX_ITEMS = 40
 MAX_REPORT = 100_000
+STATE_DIR = Path(os.environ.get("EZSTUDIO_REPORTS_STATE_DIR", r"H:\\EZStudio_Run_Reports_state"))
 
 
 def sanitize(value, depth=0):
@@ -150,31 +152,67 @@ def publish(path, report):
     return "published"
 
 
+def _digest(report):
+    return hashlib.sha256(
+        json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _load_state(path):
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_state(path, state):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged = path.with_suffix(".pending")
+    staged.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    os.replace(staged, path)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "benchmark.sqlite"))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--limit", type=int, default=250)
+    parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive for bounded checks")
+    parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args()
-    if args.limit < 1 or args.limit > 1000:
-        parser.error("--limit must be 1..1000")
+    if args.limit < 0:
+        parser.error("--limit must be >= 0")
     if not Path(args.db).is_file():
         parser.error("database not found")
-    failed = 0
+    state_file = args.state_dir / "published.json"
+    state = {} if args.dry_run else _load_state(state_file)
     checked = 0
+    published = 0
+    unchanged = 0
+    failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
         for path, report in collect(db):
-            if checked >= args.limit:
+            if args.limit and checked >= args.limit:
                 break
             checked += 1
+            digest = _digest(report)
+            if not args.dry_run and state.get(path) == digest:
+                unchanged += 1
+                continue
             try:
-                status = "dry-run" if args.dry_run else publish(path, report)
+                if args.dry_run:
+                    status = "dry-run"
+                else:
+                    status = publish(path, report)
+                    state[path] = digest
+                    _save_state(state_file, state)
+                    published += status == "published"
                 print(f"{status}: {path}", flush=True)
             except Exception as exc:
                 failed += 1
                 print(f"failed: {path}: {type(exc).__name__}: {str(exc)[:200]}",
                       file=sys.stderr, flush=True)
-    print(f"REPORTS checked={checked} failed={failed}", flush=True)
+    print(f"REPORTS checked={checked} published={published} unchanged={unchanged} failed={failed}", flush=True)
     return 1 if failed else 0
 
 
