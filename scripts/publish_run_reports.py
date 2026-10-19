@@ -188,11 +188,17 @@ def main():
     parser.add_argument("--db", default=str(Path(__file__).resolve().parents[1] / "data" / "benchmark.sqlite"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--producer", choices=("all", "lab", "assistant"), default="all")
+    parser.add_argument("--run-id", type=int, help="Publish only this scientific run (requires --producer lab)")
+    parser.add_argument("--revision-id", type=int, help="Publish only this revision (requires --producer assistant)")
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args()
     if args.limit < 0:
         parser.error("--limit must be >= 0")
+    if args.run_id is not None and (args.run_id < 1 or args.producer != "lab" or args.revision_id is not None):
+        parser.error("--run-id requires --producer lab and positive run ID")
+    if args.revision_id is not None and (args.revision_id < 1 or args.producer != "assistant"):
+        parser.error("--revision-id requires --producer assistant and positive revision ID")
     if not Path(args.db).is_file():
         parser.error("database not found")
     state_file = args.state_dir / "published.json"
@@ -202,10 +208,16 @@ def main():
     published = 0
     unchanged = 0
     failed = 0
+    found = False
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
         for path, report in collect(db):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
+            if args.run_id is not None and report["run_id"] != args.run_id:
+                continue
+            if args.revision_id is not None and report.get("revision_id") != args.revision_id:
+                continue
+            found = True
             checked += 1
             digest = _digest(report)
             if not args.dry_run and state.get(path) == digest:
@@ -228,6 +240,9 @@ def main():
                 print(f"failed: {path}: {type(exc).__name__}: {str(exc)[:200]}",
                       file=sys.stderr, flush=True)
     print(f"REPORTS checked={checked} attempted={attempted} published={published} unchanged={unchanged} failed={failed}", flush=True)
+    if (args.run_id is not None or args.revision_id is not None) and not found:
+        print("REPORT_NOT_FOUND_OR_NOT_FINAL", file=sys.stderr, flush=True)
+        return 2
     return 1 if failed else 0
 
 
