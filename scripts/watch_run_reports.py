@@ -7,6 +7,7 @@ The existing durable published.json is the retry journal; no SQLite writes.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -20,7 +21,7 @@ def publish_changes(db_path: Path, state_dir: Path, batch_size: int = 5) -> tupl
     state = publisher._load_state(state_file)
     pushed = errors = 0
     # Separate producers: a large historical LAB backlog never starves Assistant.
-    with sqlite3.connect(f"file:{db_path.resolve().as_posix()}?mode=ro", uri=True, timeout=5) as db:
+    with closing(sqlite3.connect(f"file:{db_path.resolve().as_posix()}?mode=ro", uri=True, timeout=5)) as db:
         for producer in ("assistant", "lab"):
             attempted = 0
             for path, report in publisher.collect(db):
