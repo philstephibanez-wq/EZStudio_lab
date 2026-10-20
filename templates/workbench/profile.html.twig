@@ -132,7 +132,7 @@
                                 <th>Dimension</th>
                                 <th>Observation LAB</th><th>Avis Qwen</th><th>Validation externe</th>
                                 <th>Confiance IA</th>
-                                <th>Indices</th>
+                                <th>Indices LAB / références</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -181,7 +181,9 @@
                                                 {% endif %}
                                             </details>
                                         {% else %}
-                                            Aucune preuve fournie
+                                            {% if key == 'genre' %}Observation LAB : {{ selected_profile_run.diagnostics.profile_view.genre_hierarchy.primary.genre ?? 'non renseignée' }} ; aucune preuve externe retenue
+{% elseif key == 'instrumentation' %}Candidats LAB : {% for ins in selected_profile_run.diagnostics.profile_view.instrumentation.candidates ?? [] %}{{ ins.label ?? '?' }}{% if ins.source_count is defined %} ({{ ins.source_count }} moteurs){% endif %}{% if not loop.last %}, {% endif %}{% else %}aucun{% endfor %} ; aucune preuve externe retenue
+{% else %}Observation LAB : {{ attribute(selected_profile_run.diagnostics.profile_view.vocal_profile.dimensions ?? {}, key).decision ?? 'non renseignée' }} ; aucune preuve externe retenue{% endif %}
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -196,7 +198,7 @@
                             <ul>
                                 {% for source in revision.sources %}
                                     <li>
-                                        {{ source.title ?? source.name ?? source.url ?? 'Source sans titre' }}
+                                        {{ source.title ?? source.name ?? source.url ?? 'Source sans titre' }} · {{ source.type == 'consulted_reference' ? 'consultée, NON validée' : 'référence retenue' }}
                                         {% if source.url is defined %}
                                             · <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">Consulter</a>
                                         {% endif %}
