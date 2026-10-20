@@ -130,7 +130,7 @@
                         <thead>
                             <tr>
                                 <th>Dimension</th>
-                                <th>Décision IA</th>
+                                <th>Observation LAB</th><th>Avis Qwen</th><th>Validation externe</th>
                                 <th>Confiance IA</th>
                                 <th>Indices</th>
                             </tr>
@@ -146,7 +146,7 @@
                                 {% set item = attribute(dimensions, key) ?? (key == 'lead_vocal' ? (dimensions.lead_vocals ?? {}) : {}) %}
                                 <tr>
                                     <td><strong>{{ label }}</strong></td>
-                                    <td>{{ item.decision ?? 'Non évalué' }}</td>
+                                    <td>{% if key == 'genre' %}{{ selected_profile_run.diagnostics.profile_view.genre_hierarchy.primary.genre ?? '—' }}{% elseif key == 'instrumentation' %}{% for ins in selected_profile_run.diagnostics.profile_view.instrumentation.candidates ?? [] %}{{ ins.label ?? '—' }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}{% else %}{{ attribute(selected_profile_run.diagnostics.profile_view.vocal_profile.dimensions ?? {}, key).decision ?? '—' }}{% endif %}</td><td>{{ item.rationale ?? item.reason ?? '—' }}</td><td>{{ item.decision ?? 'Non évalué' }}</td>
                                     <td>
                                         {% if item.confidence is defined and item.confidence is not null %}
                                             {{ (item.confidence * 100)|number_format(0) }} %
@@ -188,7 +188,7 @@
                             {% endfor %}
                         </tbody>
                     </table>
-                    {% if revision.sources is not empty %}
+                    {% if revision.sources is empty %}<p class="meta">Références Assistant : aucune URL enregistrée pour cette révision.</p>{% else %}
                         <details>
                             <summary>
                                 Sources publiques déclarées ({{ revision.sources|length }})
