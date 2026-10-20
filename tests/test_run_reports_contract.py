@@ -34,14 +34,14 @@ class ReportsContract(unittest.TestCase):
                 engine_version TEXT, metrics_json TEXT, diagnostics_json TEXT,
                 created_at TEXT, finished_at TEXT);
             CREATE TABLE profile_external_revisions (
-                id INTEGER, run_id INTEGER, reviewer TEXT, status TEXT, consensus_json TEXT,
+                id INTEGER, run_id INTEGER, reviewer TEXT, status TEXT, sources_json TEXT, consensus_json TEXT,
                 comparison_json TEXT, confidence REAL, created_at TEXT, updated_at TEXT);
             INSERT INTO scientific_runs VALUES
                 (153,'abc','profile','done','engine','1','{}','{}','now','now'),
                 (154,'def','profile','running','engine','1','{}','{}','now',NULL);
             INSERT INTO profile_external_revisions VALUES
-                (30,153,'ai','draft','{}','{}',0.63,'now','now'),
-                (31,153,'ai','draft','{}','{}',0.63,'now','now');
+                (30,153,'ai','draft','[]','{}','{}',0.63,'now','now'),
+                (31,153,'ai','draft','[]','{}','{}',0.63,'now','now');
         """)
         reports = list(publisher.collect(db))
         self.assertEqual(
@@ -49,6 +49,21 @@ class ReportsContract(unittest.TestCase):
             ["assistant/profile/run-000153/revision-000031.json"],
         )
         self.assertFalse(any(item["run_id"] == 154 for _, item in reports))
+
+    def test_public_references_published_without_private_data(self):
+        import json
+        sources = [
+            {"name":"MusicBrainz", "url":"https://musicbrainz.org/recording/abc?token=SECRET",
+             "type":"consulted_reference", "identity_relevant":False, "evidence":{"prompt":"secret"}},
+            {"name":"Intranet", "url":"https://internal.example.com/secret"},
+            {"name":"Wikipedia", "url":"https://en.wikipedia.org/wiki/Test", "type":"public_reference"},
+        ]
+        clean = publisher.sanitize_sources(json.dumps(sources))
+        self.assertEqual(len(clean), 2)
+        self.assertEqual(clean[0]["url"], "https://musicbrainz.org/recording/abc")
+        self.assertFalse(clean[0]["evidence_accepted"])
+        self.assertNotIn("evidence", clean[0])
+        self.assertFalse(any("SECRET" in str(x) for x in clean))
 
     def test_persistent_state_round_trip(self):
         import tempfile

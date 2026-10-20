@@ -17,6 +17,7 @@ import subprocess
 import sys
 import hashlib
 import time
+from urllib.parse import urlsplit, urlunsplit
 
 DEST = "philstephibanez-wq/EZStudio_Run_Reports"
 PHASES = {"profile": "profile", "stems": "stems", "chords": "chords_n", "lyrics": "lyrics"}
@@ -58,6 +59,45 @@ def sanitize(value, depth=0):
     return None
 
 
+
+PUBLIC_HOSTS = frozenset(("musicbrainz.org", "www.musicbrainz.org",
+    "en.wikipedia.org", "fr.wikipedia.org", "www.wikidata.org",
+    "www.wikipedia.org", "wikidata.org"))
+
+def sanitize_sources(raw):
+    """Allowlisted public references only; never export arbitrary URLs or evidence payloads."""
+    try:
+        entries = json.loads(raw or "[]")
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    kept = []
+    for entry in entries[:MAX_ITEMS]:
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("url")
+        if not isinstance(value, str) or len(value) > 500:
+            continue
+        try:
+            url = urlsplit(value)
+            if url.scheme != "https" or url.hostname not in PUBLIC_HOSTS or url.username or url.password or url.port:
+                continue
+            if not url.path.startswith("/") or ".." in url.path or "\\\\" in url.path:
+                continue
+            clean_url = urlunsplit(("https", url.hostname, url.path, "", ""))
+        except ValueError:
+            continue
+        kept.append({
+            "name": sanitize(entry.get("name")) or "Public reference",
+            "type": "consulted_reference" if entry.get("type") == "consulted_reference" else "public_reference",
+            "url": clean_url,
+            "identity_relevant": entry.get("identity_relevant") is True,
+            "evidence_accepted": entry.get("evidence_accepted") is True,
+        })
+    return kept
+
+
 def parse_json(raw):
     try:
         obj = json.loads(raw or "{}")
@@ -96,7 +136,7 @@ def collect(db):
     if not exists:
         return
     revisions = db.execute(
-        "SELECT id, run_id, reviewer, status, consensus_json, "
+        "SELECT id, run_id, reviewer, status, sources_json, consensus_json, "
         "comparison_json, confidence, created_at, updated_at "
         "FROM profile_external_revisions ORDER BY id DESC"
     )
@@ -108,6 +148,7 @@ def collect(db):
             "status": rev["status"], "created_at": rev["created_at"],
             "updated_at": rev["updated_at"], "confidence": rev["confidence"],
             "consensus": sanitize(parse_json(rev["consensus_json"])),
+            "sources": sanitize_sources(rev["sources_json"]),
             "comparison": sanitize(parse_json(rev["comparison_json"])),
             "note": "Consultative; not independent scientific validation.",
         }
