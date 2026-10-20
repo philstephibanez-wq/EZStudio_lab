@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 
@@ -15,7 +16,7 @@ class WatcherContract(unittest.TestCase):
     def test_initial_event_and_idempotence(self):
         with tempfile.TemporaryDirectory() as tmp:
             dbpath = Path(tmp) / "benchmark.sqlite"
-            with sqlite3.connect(dbpath) as db:
+            with closing(sqlite3.connect(dbpath)) as db:
                 db.executescript("""
                 CREATE TABLE scientific_runs (
                     id INTEGER, public_id TEXT, item TEXT, state TEXT,
@@ -37,8 +38,9 @@ class WatcherContract(unittest.TestCase):
                 self.assertEqual(watcher.publish_changes(dbpath, Path(tmp), 5), (2, 0))
                 self.assertEqual(watcher.publish_changes(dbpath, Path(tmp), 5), (0, 0))
                 self.assertTrue(sent[0].startswith("assistant/"))
-                with sqlite3.connect(dbpath) as db:
+                with closing(sqlite3.connect(dbpath)) as db:
                     db.execute("UPDATE profile_external_revisions SET confidence=0.7 WHERE id=2")
+                    db.commit()
                 self.assertEqual(watcher.publish_changes(dbpath, Path(tmp), 5), (1, 0))
             finally:
                 watcher.publisher.publish = original
