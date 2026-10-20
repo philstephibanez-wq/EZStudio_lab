@@ -146,7 +146,13 @@
                                 {% set item = attribute(dimensions, key) ?? (key == 'lead_vocal' ? (dimensions.lead_vocals ?? {}) : {}) %}
                                 <tr>
                                     <td><strong>{{ label }}</strong></td>
-                                    <td>{% if key == 'genre' %}{{ selected_profile_run.diagnostics.profile_view.genre_hierarchy.primary.genre ?? '—' }}{% elseif key == 'instrumentation' %}{% for ins in selected_profile_run.diagnostics.profile_view.instrumentation.candidates ?? [] %}{{ ins.label ?? '—' }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}{% else %}{{ attribute(selected_profile_run.diagnostics.profile_view.vocal_profile.dimensions ?? {}, key).decision ?? '—' }}{% endif %}</td><td>{% if item.rationale is defined and item.rationale|trim is not empty %}{{ item.rationale }}{% else %}<span class="meta">Avis musical non fourni</span>{% endif %}</td><td>{{ item.decision ?? 'Non évalué' }}{% if item.reason is defined and item.reason|trim is not empty %}<div class="meta">Motif : {{ item.reason }}</div>{% endif %}</td>
+                                    <td>{% if key == 'genre' %}{{ selected_profile_run.diagnostics.profile_view.genre_hierarchy.primary.genre ?? '—' }}{% elseif key == 'instrumentation' %}{% for ins in selected_profile_run.diagnostics.profile_view.instrumentation.candidates ?? [] %}{{ ins.label ?? '—' }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}{% else %}{{ attribute(selected_profile_run.diagnostics.profile_view.vocal_profile.dimensions ?? {}, key).decision ?? '—' }}{% endif %}</td><td>{% if item.advisory is defined and item.advisory %}
+<strong>{{ item.advisory }}</strong>
+<div class="meta">Certitude consultative : {{ item.certainty ?? 'indéterminée' }} (non calibrée)</div>
+{% if item.recommendation is defined and item.recommendation %}<div class="meta">À examiner : {{ item.recommendation }}</div>{% endif %}
+{% elseif item.rationale is defined and item.rationale|trim is not empty %}
+{{ item.rationale }}
+{% else %}<span class="meta">Avis musical non fourni</span>{% endif %}</td><td>{{ item.decision ?? 'Non évalué' }}{% if item.reason is defined and item.reason|trim is not empty %}<div class="meta">Motif : {{ item.reason }}</div>{% endif %}</td>
                                     <td>
                                         {% if item.confidence is defined and item.confidence is not null %}
                                             {{ (item.confidence * 100)|number_format(0) }} %
