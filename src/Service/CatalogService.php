@@ -76,25 +76,9 @@ final class CatalogService
                     if (($ai['status'] ?? '') !== 'completed') {
                         continue;
                     }
-                    $dimensions = is_array($detail['dimensions'] ?? null) ? $detail['dimensions'] : [];
-                    $hasScoredEvidence = false;
-                    foreach ($dimensions as $dimension) {
-                        if (!is_array($dimension)
-                            || !in_array($dimension['decision'] ?? '', ['match', 'mismatch'], true)) {
-                            continue;
-                        }
-                        $evidence = $dimension['evidence'] ?? null;
-                        if (
-                            (is_string($evidence) && trim($evidence) !== '')
-                            || (is_array($evidence) && $evidence !== [])
-                        ) {
-                            $hasScoredEvidence = true;
-                            break;
-                        }
-                    }
-                    if (!$hasScoredEvidence) {
-                        continue;
-                    }
+                    // A completed consultative AI review counts as reviewed,
+                    // even when no independent documentary dimension is scored.
+                    // Keep the latest scientific run restriction above.
                     $group['profile_ai_reviewed'] = true;
                     $group['profile_ai_revision_id'] = (int)$revision['id'];
                     $group['profile_ai_status'] = (string)$revision['status'];
