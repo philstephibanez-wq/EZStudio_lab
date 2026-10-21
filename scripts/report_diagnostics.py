@@ -64,7 +64,7 @@ def make_record(producer,phase,run_id,values,revision_id=None):
             "coverage":{"source":"MAIN SQLite","included_json_fields":sorted(k for k in values if k.endswith("_json")),
                         "not_available_from_main":["raw_xps_qwen_request","raw_xps_qwen_response","xps_trace_events"]}}
 
-def reports(db, *, offset=0, limit=None, skip_row=None):
+def reports(db, *, offset=0, limit=None, skip_row=None, revision_id=None):
     """Stable page over LAB runs then Assistant revisions, before JSON decoding."""
     seen=0
     emitted=0
@@ -74,7 +74,7 @@ def reports(db, *, offset=0, limit=None, skip_row=None):
         seen+=1
         return index >= offset and (limit is None or emitted < limit)
     db.row_factory=__import__("sqlite3").Row
-    for row in db.execute("SELECT * FROM scientific_runs ORDER BY id DESC"):
+    for row in ([] if revision_id is not None else db.execute("SELECT * FROM scientific_runs ORDER BY id DESC")):
         row=dict(row);phase=PHASES.get(row.get("item"))
         if not phase or row.get("state") not in ("done","error","failed","cancelled"):continue
         if limit is not None and emitted >= limit: return
@@ -90,7 +90,9 @@ def reports(db, *, offset=0, limit=None, skip_row=None):
         yield f"diagnostics/lab/{phase}/run-{row['id']:06d}/main-db.json",record
     table=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_external_revisions'").fetchone()
     if table:
-        for row in db.execute("SELECT * FROM profile_external_revisions ORDER BY id DESC"):
+        query = ("SELECT * FROM profile_external_revisions WHERE id=?" if revision_id is not None
+                 else "SELECT * FROM profile_external_revisions ORDER BY id DESC")
+        for row in db.execute(query, (revision_id,) if revision_id is not None else ()):
             if limit is not None and emitted >= limit: return
             if not eligible(): continue
             row=dict(row)
