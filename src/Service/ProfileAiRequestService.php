@@ -82,18 +82,61 @@ final class ProfileAiRequestService
         }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
     }
 
+
+    private function ensureMaintenanceTable(): void
+    {
+        $this->pdo()->exec("CREATE TABLE IF NOT EXISTS profile_ai_maintenance (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL DEFAULT 0)");
+        $this->pdo()->exec("INSERT OR IGNORE INTO profile_ai_maintenance(id,paused) VALUES(1,0)");
+    }
+
+    public function maintenance(string $mode): array
+    {
+        if (!in_array($mode,['status','pause','resume'],true)) throw new \InvalidArgumentException('invalid_maintenance_mode');
+        $pdo=$this->pdo();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $this->ensureMaintenanceTable();
+            $active=(int)$pdo->query("SELECT COUNT(*) FROM analysis_jobs WHERE kind='assistant.profile.review' AND status='running'")->fetchColumn();
+            if ($mode==='pause') $pdo->exec("UPDATE profile_ai_maintenance SET paused=1 WHERE id=1");
+            if ($mode==='resume') {
+                if ($active>0) throw new \RuntimeException('profile_ai_jobs_active');
+                $pdo->exec("UPDATE profile_ai_maintenance SET paused=0 WHERE id=1");
+            }
+            $paused=(bool)$pdo->query("SELECT paused FROM profile_ai_maintenance WHERE id=1")->fetchColumn();
+            $pdo->commit();
+            return ['ok'=>true,'maintenance'=>$paused,'active'=>$active>0,'active_count'=>$active];
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
     public function pending(): array
     {
         $this->migrateLegacy();
+        if ($this->maintenance('status')['maintenance']) return [];
         $rows=$this->pdo()->query("SELECT id AS job_id,scientific_run_id AS run_id,status,updated_at FROM analysis_jobs WHERE kind='assistant.profile.review' AND status='queued' ORDER BY created_at ASC,id ASC LIMIT 20")->fetchAll(\PDO::FETCH_ASSOC);
         return array_map(static function(array $r): array {$r['run_id']=(int)$r['run_id'];$r['job_id']=(int)$r['job_id'];return $r;},$rows);
     }
 
     public function claim(int $runId): bool
     {
-        $stmt=$this->pdo()->prepare("UPDATE analysis_jobs SET status='running',progress=1,error=NULL,updated_at=? WHERE scientific_run_id=? AND kind=? AND status='queued'");
-        $stmt->execute([gmdate('c'),$runId,self::KIND]);
-        return $stmt->rowCount()===1;
+        $pdo=$this->pdo();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $this->ensureMaintenanceTable();
+            if ((bool)$pdo->query('SELECT paused FROM profile_ai_maintenance WHERE id=1')->fetchColumn()) {
+                $pdo->commit(); return false;
+            }
+            $stmt=$pdo->prepare("UPDATE analysis_jobs SET status='running',progress=1,error=NULL,updated_at=? WHERE scientific_run_id=? AND kind=? AND status='queued'");
+            $stmt->execute([gmdate('c'),$runId,self::KIND]);
+            $claimed=$stmt->rowCount()===1;
+            $pdo->commit();
+            return $claimed;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function finish(int $runId,string $status,string $message): array
