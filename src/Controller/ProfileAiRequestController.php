@@ -71,6 +71,16 @@ final class ProfileAiRequestController extends AbstractController
                 'complete_for_registry'=>true,'database_exhaustiveness_verified'=>false]]);
     }
 
+    #[Route('/internal/analysis/desktop/profile/ai-requests/maintenance',name:'lab_internal_profile_ai_maintenance',methods:['GET','POST'])]
+    public function maintenance(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        try {
+            $mode=$request->isMethod('GET') ? 'status' : (string)($request->toArray()['mode']??'');
+            return $this->json($this->queue->maintenance($mode));
+        } catch (\Throwable $e) { return $this->json(['ok'=>false,'error'=>$e->getMessage()],409); }
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests/recent', name: 'lab_internal_profile_ai_recent', methods: ['GET'])]
     public function recent(Request $request): JsonResponse
     {
