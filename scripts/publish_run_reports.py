@@ -298,6 +298,12 @@ def main():
                     continue
             digest = _digest(report)
             if not args.dry_run and not args.audit_detailed and state.get(path) == digest:
+                # Legacy state had the archive digest only. Establish source
+                # signature even on an unchanged report, so future runs skip
+                # the record before JSON decoding and before counting the limit.
+                if path in pending_signatures and state.get("source:"+path) != pending_signatures[path]:
+                    state["source:"+path] = pending_signatures[path]
+                    _save_state(state_file, state)
                 unchanged += 1
                 continue
             if args.limit and attempted >= args.limit:
