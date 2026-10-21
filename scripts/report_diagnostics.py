@@ -58,8 +58,26 @@ def make_record(producer,phase,run_id,values,revision_id=None):
     redactions=[]
     clean=filtered(values,redactions)
     payload=json.dumps(clean,sort_keys=True,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf-8")
+    # Snapshot hashes before privacy filtering are provenance evidence only.
+    # Never publish source values or infer integrity from a hash alone.
+    module_integrity=[]
+    if producer=="lab" and phase=="profile":
+        source_modules=values.get("diagnostics_json",{}).get("module_registry",{}).get("modules",[])
+        clean_modules=clean.get("diagnostics_json",{}).get("module_registry",{}).get("modules",[])
+        if isinstance(source_modules,list) and isinstance(clean_modules,list) and len(source_modules)==len(clean_modules):
+            for original,archived in zip(source_modules,clean_modules):
+                if not isinstance(original,dict) or not isinstance(archived,dict) or original.get("id")!=archived.get("id"):
+                    raise ValueError("module_archive_identity_mismatch")
+                def source_digest(obj):
+                    canonical=json.dumps(obj,sort_keys=True,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf-8")
+                    return hashlib.sha256(canonical).hexdigest()
+                before=source_digest(original)
+                after=source_digest(archived)
+                module_integrity.append({"module":original.get("id"),"source_sha256_before_redaction":before,
+                                         "archive_sha256_after_redaction":after,"archive_changed":before!=after})
     return {"schema":"ezstudio.diagnostics.main.v1","producer":producer,"phase":phase,
             "run_id":run_id,"revision_id":revision_id,"fields":clean,"redactions":redactions,
+            "module_integrity":module_integrity,
             "fields_sha256":hashlib.sha256(payload).hexdigest(),
             "coverage":{"source":"MAIN SQLite","included_json_fields":sorted(k for k in values if k.endswith("_json")),
                         "not_available_from_main":["raw_xps_qwen_request","raw_xps_qwen_response","xps_trace_events"]}}
