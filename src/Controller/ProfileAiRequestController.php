@@ -40,6 +40,37 @@ final class ProfileAiRequestController extends AbstractController
         return $this->json(['request'=>$this->queue->get($id)]);
     }
 
+    #[Route('/internal/analysis/desktop/profile/{id<\\d+>}/scientific-items',name:'lab_internal_profile_scientific_items',methods:['GET'])]
+    public function scientificItems(Request $request,int $id,\\App\\Service\\AnalysisRunRegistry $runs): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $run=$runs->run($id);
+        if (!$run || ($run['item']??null)!=='profile' || ($run['state']??null)!=='done') {
+            return $this->json(['error'=>'completed_profile_run_required'],404);
+        }
+        $diagnostics=$run['diagnostics']??[];
+        $modules=$diagnostics['module_registry']['modules']??null;
+        if (!is_array($modules) || !array_is_list($modules)) {
+            return $this->json(['error'=>'scientific_module_registry_missing'],409);
+        }
+        $items=[]; $seen=[];
+        foreach ($modules as $index=>$module) {
+            $key=is_array($module)?($module['id']??null):null;
+            if (!is_string($key) || $key==='' || isset($seen[$key])) {
+                return $this->json(['error'=>'scientific_module_identity_invalid'],409);
+            }
+            $seen[$key]=true;
+            $items[]=['index'=>$index+1,'item_id'=>$key,'label'=>$module['name']??$key,
+                'family'=>$module['family']??null,'status'=>$module['status']??null,
+                'source_pointer'=>'/diagnostics/module_registry/modules/'.$index,
+                'module'=>$module];
+        }
+        return $this->json(['schema'=>'ezstudio.profile-scientific-items.r1',
+            'run_id'=>$id,'item_total'=>count($items),'items'=>$items,
+            'coverage'=>['registry_total'=>count($modules),'returned'=>count($items),
+                'complete_for_registry'=>true,'database_exhaustiveness_verified'=>false]]);
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests/recent', name: 'lab_internal_profile_ai_recent', methods: ['GET'])]
     public function recent(Request $request): JsonResponse
     {
