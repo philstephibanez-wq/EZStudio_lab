@@ -204,6 +204,10 @@ def publish(path, report):
     if sha:
         payload["sha"] = sha
     gh("--method", "PUT", endpoint, "--input", "-", input_json=payload)
+    if path.startswith("diagnostics/"):
+        remote = gh(endpoint)
+        if base64.b64decode(remote.get("content", "")) != raw:
+            raise RuntimeError("github_roundtrip_mismatch:" + path)
     return "published"
 
 
