@@ -301,6 +301,7 @@ def main():
                     state[path] = digest
                     _save_state(state_file, state)
                     published += status == "published"
+                    unchanged += status == "unchanged"
                 print(f"{status}: {path}", flush=True)
             except Exception as exc:
                 failed += 1
