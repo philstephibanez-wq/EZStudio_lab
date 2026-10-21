@@ -235,33 +235,39 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
+    parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization without any GitHub upload")
     args = parser.parse_args()
     if args.limit < 0:
         parser.error("--limit must be >= 0")
     if not Path(args.db).is_file():
         parser.error("database not found")
     state_file = args.state_dir / "published.json"
-    state = {} if args.dry_run else _load_state(state_file)
+    state = {} if args.dry_run or args.audit_detailed else _load_state(state_file)
     checked = 0
     attempted = 0
     published = 0
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        streams = (collect(db), detailed_reports(db)) if args.detailed else (collect(db),)
+        streams = (detailed_reports(db),) if args.audit_detailed else ((collect(db), detailed_reports(db)) if args.detailed else (collect(db),))
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
             checked += 1
             digest = _digest(report)
-            if not args.dry_run and state.get(path) == digest:
+            if not args.dry_run and not args.audit_detailed and state.get(path) == digest:
                 unchanged += 1
                 continue
             if args.limit and attempted >= args.limit:
                 break
             attempted += 1
             try:
-                if args.dry_run:
+                if args.audit_detailed:
+                    raw = json.dumps(report, ensure_ascii=False, allow_nan=False).encode("utf-8")
+                    if len(raw) > 4_000_000:
+                        raise ValueError("diagnostic_too_large")
+                    status = "audit-ok"
+                elif args.dry_run:
                     status = "dry-run"
                 else:
                     status = publish(path, report)
