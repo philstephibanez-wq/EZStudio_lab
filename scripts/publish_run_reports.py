@@ -172,6 +172,10 @@ def gh(*args, input_json=None):
     return json.loads(res.stdout or b"{}")
 
 
+def _git_blob_sha(raw):
+    return hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\x00" + raw).hexdigest()
+
+
 def publish(path, report):
     raw = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     if len(raw) > MAX_REPORT and not path.startswith("diagnostics/"):
@@ -191,7 +195,7 @@ def publish(path, report):
     try:
         old = gh(endpoint)
         old_raw = base64.b64decode(old.get("content", ""))
-        if old_raw == raw:
+        if old.get("sha") == _git_blob_sha(raw) or (old.get("content") and old_raw == raw):
             return "unchanged"
         sha = old["sha"]
     except RuntimeError as exc:
@@ -206,7 +210,7 @@ def publish(path, report):
     gh("--method", "PUT", endpoint, "--input", "-", input_json=payload)
     if path.startswith("diagnostics/"):
         remote = gh(endpoint)
-        if base64.b64decode(remote.get("content", "")) != raw:
+        if remote.get("sha") != _git_blob_sha(raw):
             raise RuntimeError("github_roundtrip_mismatch:" + path)
     return "published"
 
