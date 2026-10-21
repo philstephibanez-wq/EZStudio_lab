@@ -196,6 +196,40 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                    {% set module_review = revision.comparison.module_consultations ?? {} %}
+                    {% set module_results = module_review.results ?? [] %}
+                    {% if module_results is not empty %}
+                        <details class="profile-ai-modules" {% if loop.first %}open{% endif %}>
+                            <summary>Consultations Qwen par module — {{ module_review.examined ?? module_results|length }}/{{ module_review.item_total ?? '?' }} · {{ (module_review.complete ?? false) ? 'couverture complète' : 'couverture partielle' }} · avis non validés</summary>
+                            <p class="meta">Les résumés ci-dessous sont des hypothèses IA issues des sorties scientifiques, pas une écoute de l'audio ni une validation documentaire. Les contradictions absentes ne prouvent pas un consensus.</p>
+                            <table>
+                                <thead><tr><th>Module</th><th>Statut / durée</th><th>Avis Qwen consultatif</th><th>Incertitude et indices</th></tr></thead>
+                                <tbody>
+                                {% for module in module_results %}
+                                    {% set opinion = module.assessment ?? {} %}
+                                    <tr>
+                                        <td><strong>{{ module.index ?? loop.index }}. {{ module.item_id ?? 'Module inconnu' }}</strong><div class="meta">Source SHA-256 : {{ module.source_sha256 ?? 'non fournie' }}</div></td>
+                                        <td>{{ module.status ?? 'inconnu' }}<div class="meta">{{ module.duration_ms ?? '?' }} ms</div></td>
+                                        <td>{{ opinion.summary ?? 'Avis non fourni' }}</td>
+                                        <td>
+                                            <strong>Incertitude :</strong> {{ opinion.uncertainty ?? 'non renseignée' }}
+                                            {% if opinion.supporting_evidence ?? [] %}
+                                                <details><summary>Indices invoqués ({{ opinion.supporting_evidence|length }})</summary>
+                                                    <ul>{% for evidence in opinion.supporting_evidence %}<li>{{ evidence is iterable ? (evidence|json_encode) : evidence }}</li>{% endfor %}</ul>
+                                                </details>
+                                            {% endif %}
+                                            {% if opinion.conflicting_evidence ?? [] %}
+                                                <details><summary>Contradictions signalées ({{ opinion.conflicting_evidence|length }})</summary>
+                                                    <ul>{% for evidence in opinion.conflicting_evidence %}<li>{{ evidence is iterable ? (evidence|json_encode) : evidence }}</li>{% endfor %}</ul>
+                                                </details>
+                                            {% else %}<div class="meta">Aucune contradiction signalée par Qwen (non vérifié).</div>{% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </details>
+                    {% endif %}
                     {% if revision.sources is empty %}<p class="meta">Références Assistant : aucune URL enregistrée pour cette révision.</p>{% else %}
                         <details>
                             <summary>
