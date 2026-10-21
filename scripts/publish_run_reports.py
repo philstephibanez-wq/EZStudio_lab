@@ -258,13 +258,27 @@ def main():
         parser.error("database not found")
     state_file = args.state_dir / "published.json"
     state = {} if args.dry_run or args.audit_detailed else _load_state(state_file)
+    pending_signatures = {}
+    def skip_published(producer, phase, run_id, revision_id, row):
+        path = (f"diagnostics/lab/{phase}/run-{run_id:06d}/main-db.json"
+                if producer == "lab" else
+                f"diagnostics/assistant/profile/run-{run_id:06d}/revision-{revision_id:06d}/main-db.json")
+        digest = hashlib.sha256()
+        for key in sorted(row):
+            value = row[key]
+            digest.update(value if isinstance(value, bytes) else str(value).encode("utf-8", "surrogatepass"))
+            digest.update(b"\\0")
+        source_sha = digest.hexdigest()
+        pending_signatures[path] = source_sha
+        return state.get("source:"+path) == source_sha and path in state
     checked = 0
     attempted = 0
     published = 0
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        detailed = detailed_reports(db, offset=args.archive_offset, limit=args.limit or None) if args.detailed_only else detailed_reports(db)
+        row_skip = skip_published if args.detailed and not args.dry_run and not args.audit_detailed else None
+        detailed = detailed_reports(db, offset=args.archive_offset, limit=(args.limit or None) if args.detailed_only else None, skip_row=row_skip)
         streams = (detailed,) if (args.audit_detailed or args.detailed_only) else ((collect(db), detailed) if args.detailed else (collect(db),))
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
@@ -303,6 +317,8 @@ def main():
                 else:
                     status = publish(path, report)
                     state[path] = digest
+                    if path in pending_signatures:
+                        state["source:"+path] = pending_signatures[path]
                     _save_state(state_file, state)
                     published += status == "published"
                     unchanged += status == "unchanged"

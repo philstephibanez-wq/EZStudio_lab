@@ -64,7 +64,7 @@ def make_record(producer,phase,run_id,values,revision_id=None):
             "coverage":{"source":"MAIN SQLite","included_json_fields":sorted(k for k in values if k.endswith("_json")),
                         "not_available_from_main":["raw_xps_qwen_request","raw_xps_qwen_response","xps_trace_events"]}}
 
-def reports(db, *, offset=0, limit=None):
+def reports(db, *, offset=0, limit=None, skip_row=None):
     """Stable page over LAB runs then Assistant revisions, before JSON decoding."""
     seen=0
     emitted=0
@@ -72,16 +72,15 @@ def reports(db, *, offset=0, limit=None):
         nonlocal seen, emitted
         index=seen
         seen+=1
-        if index < offset or (limit is not None and emitted >= limit):
-            return False
-        emitted+=1
-        return True
+        return index >= offset and (limit is None or emitted < limit)
     db.row_factory=__import__("sqlite3").Row
     for row in db.execute("SELECT * FROM scientific_runs ORDER BY id DESC"):
         row=dict(row);phase=PHASES.get(row.get("item"))
         if not phase or row.get("state") not in ("done","error","failed","cancelled"):continue
         if limit is not None and emitted >= limit: return
         if not eligible(): continue
+        if skip_row is not None and skip_row("lab", phase, row["id"], None, row): continue
+        emitted+=1
         # Exclude database blobs/paths to local audio and stems; list every exclusion in the record.
         excluded=[k for k,v in row.items() if isinstance(v,bytes) or UNSAFE_FIELD.search(k)]
         values={k:parse(v,k) if k.endswith("_json") else v for k,v in row.items()
@@ -95,6 +94,8 @@ def reports(db, *, offset=0, limit=None):
             if limit is not None and emitted >= limit: return
             if not eligible(): continue
             row=dict(row)
+            if skip_row is not None and skip_row("assistant", "profile", row["run_id"], row["id"], row): continue
+            emitted+=1
             values={k:parse(v,k) if k.endswith("_json") else v for k,v in row.items()}
             record=make_record("assistant","profile",row["run_id"],values,row["id"])
             yield f"diagnostics/assistant/profile/run-{row['run_id']:06d}/revision-{row['id']:06d}/main-db.json",record
