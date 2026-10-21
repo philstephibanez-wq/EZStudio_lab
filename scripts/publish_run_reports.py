@@ -159,6 +159,7 @@ def collect(db):
 
 
 from report_diagnostics import reports as detailed_reports
+from report_privacy_audit import scan_record
 
 
 def gh(*args, input_json=None):
@@ -235,7 +236,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
-    parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization without any GitHub upload")
+    parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization and residual privacy risks without any GitHub upload")
     args = parser.parse_args()
     if args.limit < 0:
         parser.error("--limit must be >= 0")
@@ -266,6 +267,9 @@ def main():
                     raw = json.dumps(report, ensure_ascii=False, allow_nan=False).encode("utf-8")
                     if len(raw) > 4_000_000:
                         raise ValueError("diagnostic_too_large")
+                    findings = scan_record(report)
+                    if findings:
+                        raise ValueError("privacy_findings:" + json.dumps(findings[:10],ensure_ascii=False))
                     status = "audit-ok"
                 elif args.dry_run:
                     status = "dry-run"
