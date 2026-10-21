@@ -1,0 +1,72 @@
+"""Detailed, non-truncating structured diagnostics from MAIN's SQLite archive.
+
+Preserves all source JSON items recursively. Secret and personal-path redactions
+are recorded; archive is explicitly incomplete for XPS raw inference traces.
+No audio, stems, models or binaries are archived.
+"""
+from __future__ import annotations
+import hashlib
+import json
+import re
+
+PHASES={"profile":"profile","stems":"stems","chords":"chords_n","lyrics":"lyrics"}
+SECRET_KEYS=re.compile(r"(?:^|_)(?:token|secret|password|passwd|credential|authorization|cookie|api_key|private_key|refresh_token|access_key)(?:_|$)",re.I)
+SECRET_VALUES=re.compile(r"(?i)\b(?:bearer\s+\S{8,}|gh[pousr]_[a-z0-9_]{12,}|github_pat_[a-z0-9_]{12,}|sk-[a-z0-9_-]{12,})")
+PERSONAL_PATHS=re.compile(r"(?i)(?:[a-z]:[\\/](?:users|utilisateurs)[\\/][^\\/\s]+|/(?:home|users)/[^/\s]+)")
+UNSAFE_FIELD=re.compile(r"(?i)(?:^|_)(?:audio_bytes|waveform|pcm|stem_bytes|binary|base64_audio|model_weights)(?:_|$)")
+
+def filtered(value, redactions, key_path="$"):
+    if isinstance(value,dict):
+        out={}
+        for k,v in value.items():
+            k=str(k); loc=key_path+"."+k
+            if SECRET_KEYS.search(k) or UNSAFE_FIELD.search(k):
+                out[k]="[REDACTED_SECRET_OR_BINARY]"
+                redactions.append({"field":loc,"reason":"secret_or_binary_key"})
+            else:
+                out[k]=filtered(v,redactions,loc)
+        return out
+    if isinstance(value,list):
+        return [filtered(v,redactions,key_path+"[]") for v in value]
+    if isinstance(value,str):
+        old=value
+        value=SECRET_VALUES.sub("[REDACTED_SECRET]",value)
+        value=PERSONAL_PATHS.sub("[REDACTED_PERSONAL_PATH]",value)
+        if old!=value: redactions.append({"field":key_path,"reason":"sensitive_value"})
+        return value
+    if value is None or isinstance(value,(bool,int,float)): return value
+    raise TypeError("unsupported diagnostic value at "+key_path)
+
+def parse(raw, field):
+    try: return json.loads(raw if raw is not None else "{}")
+    except (TypeError,ValueError) as e: raise ValueError("invalid_source_json:"+field) from e
+
+def make_record(producer,phase,run_id,values,revision_id=None):
+    redactions=[]
+    clean=filtered(values,redactions)
+    payload=json.dumps(clean,sort_keys=True,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf-8")
+    return {"schema":"ezstudio.diagnostics.main.v1","producer":producer,"phase":phase,
+            "run_id":run_id,"revision_id":revision_id,"fields":clean,"redactions":redactions,
+            "fields_sha256":hashlib.sha256(payload).hexdigest(),
+            "coverage":{"source":"MAIN SQLite","included_json_fields":sorted(k for k in values if k.endswith("_json")),
+                        "not_available_from_main":["raw_xps_qwen_request","raw_xps_qwen_response","xps_trace_events"]}}
+
+def reports(db):
+    db.row_factory=__import__("sqlite3").Row
+    for row in db.execute("SELECT * FROM scientific_runs ORDER BY id DESC"):
+        row=dict(row);phase=PHASES.get(row.get("item"))
+        if not phase or row.get("state") not in ("done","error","failed","cancelled"):continue
+        # Exclude database blobs/paths to local audio and stems; list every exclusion in the record.
+        excluded=[k for k,v in row.items() if isinstance(v,bytes) or UNSAFE_FIELD.search(k)]
+        values={k:parse(v,k) if k.endswith("_json") else v for k,v in row.items()
+                if k not in excluded and k not in ("source_path","checkpoint")}
+        record=make_record("lab",phase,row["id"],values)
+        record["coverage"]["excluded_fields"]=sorted(set(excluded+["source_path","checkpoint"]))
+        yield f"diagnostics/lab/{phase}/run-{row['id']:06d}/main-db.json",record
+    table=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_external_revisions'").fetchone()
+    if table:
+        for row in db.execute("SELECT * FROM profile_external_revisions ORDER BY id DESC"):
+            row=dict(row)
+            values={k:parse(v,k) if k.endswith("_json") else v for k,v in row.items()}
+            record=make_record("assistant","profile",row["run_id"],values,row["id"])
+            yield f"diagnostics/assistant/profile/run-{row['run_id']:06d}/revision-{row['id']:06d}/main-db.json",record

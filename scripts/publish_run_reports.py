@@ -158,6 +158,9 @@ def collect(db):
         )
 
 
+from report_diagnostics import reports as detailed_reports
+
+
 def gh(*args, input_json=None):
     command = ["gh", "api", *args]
     payload = None if input_json is None else json.dumps(input_json).encode("utf-8")
@@ -170,7 +173,7 @@ def gh(*args, input_json=None):
 
 def publish(path, report):
     raw = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    if len(raw) > MAX_REPORT:
+    if len(raw) > MAX_REPORT and not path.startswith("diagnostics/"):
         report = dict(report)
         report["truncated"] = True
         if "diagnostics" in report:
@@ -180,8 +183,8 @@ def publish(path, report):
         if "comparison" in report:
             report["comparison"] = {"note": "Large comparison retained only on MAIN."}
         raw = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    if len(raw) > MAX_REPORT:
-        raise ValueError("report_exceeds_safety_limit")
+    if len(raw) > (4_000_000 if path.startswith("diagnostics/") else MAX_REPORT):
+        raise ValueError("report_exceeds_explicit_limit_no_silent_truncation:" + path)
     endpoint = f"repos/{DEST}/contents/{path}"
     sha = None
     try:
@@ -231,6 +234,7 @@ def main():
     parser.add_argument("--producer", choices=("all", "lab", "assistant"), default="all")
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
+    parser.add_argument("--summaries-only", action="store_true", help="Do not include detailed MAIN DB archives")
     args = parser.parse_args()
     if args.limit < 0:
         parser.error("--limit must be >= 0")
@@ -244,7 +248,8 @@ def main():
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        for path, report in collect(db):
+        streams = (collect(db),) if args.summaries_only else (collect(db), detailed_reports(db))
+        for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
             checked += 1
