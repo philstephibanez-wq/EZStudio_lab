@@ -237,7 +237,10 @@ def main():
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
     parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization and residual privacy risks without any GitHub upload")
+    parser.add_argument("--detailed-only", action="store_true", help="Publish ONLY detailed archives (pilot mode, never summary reports)")
     args = parser.parse_args()
+    if args.detailed_only and (not args.detailed or args.audit_detailed):
+        parser.error("--detailed-only requires --detailed and excludes --audit-detailed")
     if args.limit < 0:
         parser.error("--limit must be >= 0")
     if not Path(args.db).is_file():
@@ -250,11 +253,23 @@ def main():
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        streams = (detailed_reports(db),) if args.audit_detailed else ((collect(db), detailed_reports(db)) if args.detailed else (collect(db),))
+        streams = (detailed_reports(db),) if (args.audit_detailed or args.detailed_only) else ((collect(db), detailed_reports(db)) if args.detailed else (collect(db),))
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
             checked += 1
+            if path.startswith("diagnostics/"):
+                try:
+                    raw = json.dumps(report, ensure_ascii=False, allow_nan=False).encode("utf-8")
+                    if len(raw) > 4_000_000:
+                        raise ValueError("diagnostic_too_large")
+                    findings = scan_record(report)
+                    if findings:
+                        raise ValueError("privacy_findings:" + json.dumps(findings[:10],ensure_ascii=False))
+                except Exception as exc:
+                    failed += 1
+                    print(f"blocked: {path}: {type(exc).__name__}: {str(exc)[:200]}", file=sys.stderr, flush=True)
+                    continue
             digest = _digest(report)
             if not args.dry_run and not args.audit_detailed and state.get(path) == digest:
                 unchanged += 1
