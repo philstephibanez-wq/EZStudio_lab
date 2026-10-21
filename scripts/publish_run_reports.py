@@ -245,6 +245,7 @@ def main():
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
     parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization and residual privacy risks without any GitHub upload")
+    parser.add_argument("--revision-id", type=int, default=None, help="Archive one Assistant revision, detailed-only; verify module coverage for sequential Qwen reviews")
     parser.add_argument("--detailed-only", action="store_true", help="Publish ONLY detailed archives (pilot mode, never summary reports)")
     parser.add_argument("--archive-offset", type=int, default=0, help="Skip first N detailed records before decoding JSON (use with --detailed-only)")
     args = parser.parse_args()
@@ -254,6 +255,8 @@ def main():
         parser.error("--archive-offset requires --detailed-only and offset >= 0")
     if args.limit < 0:
         parser.error("--limit must be >= 0")
+    if args.revision_id is not None and (args.revision_id <= 0 or not args.detailed_only or args.producer != "assistant"):
+        parser.error("--revision-id requires positive ID, --detailed-only and --producer assistant")
     if not Path(args.db).is_file():
         parser.error("database not found")
     state_file = args.state_dir / "published.json"
@@ -278,12 +281,22 @@ def main():
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
         row_skip = skip_published if args.detailed and not args.dry_run and not args.audit_detailed else None
-        detailed = detailed_reports(db, offset=args.archive_offset, limit=(args.limit or None) if args.detailed_only else None, skip_row=row_skip)
+        detailed = detailed_reports(db, offset=args.archive_offset, limit=(args.limit or None) if args.detailed_only else None, skip_row=row_skip, revision_id=args.revision_id)
         streams = (detailed,) if (args.audit_detailed or args.detailed_only) else ((collect(db), detailed) if args.detailed else (collect(db),))
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
             checked += 1
+            if args.revision_id is not None:
+                consultation = report.get("fields", {}).get("comparison_json", {}).get("module_consultations")
+                if not isinstance(consultation, dict):
+                    raise ValueError("selected_revision_missing_module_consultations")
+                modules = consultation.get("results")
+                total = consultation.get("item_total")
+                if not isinstance(modules, list) or total != 12 or len(modules) != total or consultation.get("complete") is not True:
+                    raise ValueError("selected_revision_incomplete_module_coverage")
+                if any(not isinstance(m, dict) or m.get("status") not in ("completed","abstain") for m in modules):
+                    raise ValueError("selected_revision_module_status_invalid")
             if path.startswith("diagnostics/"):
                 try:
                     raw = json.dumps(report, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -333,6 +346,8 @@ def main():
                 failed += 1
                 print(f"failed: {path}: {type(exc).__name__}: {str(exc)[:200]}",
                       file=sys.stderr, flush=True)
+    if args.revision_id is not None and checked != 1:
+        raise RuntimeError("selected_revision_not_found_or_incomplete")
     print(f"REPORTS checked={checked} attempted={attempted} published={published} unchanged={unchanged} failed={failed}", flush=True)
     return 1 if failed else 0
 
