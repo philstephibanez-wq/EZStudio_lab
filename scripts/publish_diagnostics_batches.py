@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 PUBLISHER = Path(__file__).with_name("publish_run_reports.py")
-COUNTS = re.compile(r"REPORTS checked=(\\d+) attempted=(\\d+) published=(\\d+) unchanged=(\\d+) failed=(\\d+)")
+COUNTS = re.compile(r"REPORTS checked=(\d+) attempted=(\d+) published=(\d+) unchanged=(\d+) failed=(\d+)")
 
 
 def run_batches(*, batch_size=10, max_batches=8, producer="all", runner=subprocess.run):
