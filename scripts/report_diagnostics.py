@@ -8,11 +8,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 PHASES={"profile":"profile","stems":"stems","chords":"chords_n","lyrics":"lyrics"}
 SECRET_KEYS=re.compile(r"(?:^|_)(?:token|secret|password|passwd|credential|authorization|cookie|api_key|private_key|refresh_token|access_key)(?:_|$)",re.I)
 SECRET_VALUES=re.compile(r"(?i)\b(?:bearer\s+\S{8,}|gh[pousr]_[a-z0-9_]{12,}|github_pat_[a-z0-9_]{12,}|sk-[a-z0-9_-]{12,})")
 PERSONAL_PATHS=re.compile(r"(?i)(?:[a-z]:[\\/](?:users|utilisateurs)[\\/][^\\/\s]+|/(?:home|users)/[^/\s]+)")
+PRIVATE_FIELD=re.compile(r"(?:^|_)(?:email|telephone|phone|address|session|jwt|user_home)(?:_|$)",re.I)
+URLS=re.compile(r"https?://[^\s\x22\x27<>]+",re.I)
 UNSAFE_FIELD=re.compile(r"(?i)(?:^|_)(?:audio_bytes|waveform|pcm|stem_bytes|binary|base64_audio|model_weights)(?:_|$)")
 
 def filtered(value, redactions, key_path="$"):
@@ -20,7 +23,7 @@ def filtered(value, redactions, key_path="$"):
         out={}
         for k,v in value.items():
             k=str(k); loc=key_path+"."+k
-            if SECRET_KEYS.search(k) or UNSAFE_FIELD.search(k):
+            if SECRET_KEYS.search(k) or UNSAFE_FIELD.search(k) or PRIVATE_FIELD.search(k):
                 out[k]="[REDACTED_SECRET_OR_BINARY]"
                 redactions.append({"field":loc,"reason":"secret_or_binary_key"})
             else:
@@ -32,6 +35,16 @@ def filtered(value, redactions, key_path="$"):
         old=value
         value=SECRET_VALUES.sub("[REDACTED_SECRET]",value)
         value=PERSONAL_PATHS.sub("[REDACTED_PERSONAL_PATH]",value)
+        def strip_credentials(match):
+            try:
+                parsed=urlsplit(match.group(0))
+                hostname=parsed.hostname or ""
+                if parsed.port:
+                    hostname += ":" + str(parsed.port)
+                return urlunsplit((parsed.scheme,hostname,parsed.path,"",""))
+            except ValueError:
+                return "[REDACTED_URL]"
+        value=URLS.sub(strip_credentials,value)
         if old!=value: redactions.append({"field":key_path,"reason":"sensitive_value"})
         return value
     if value is None or isinstance(value,(bool,int,float)): return value
