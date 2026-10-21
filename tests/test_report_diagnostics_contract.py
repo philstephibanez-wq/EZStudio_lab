@@ -29,3 +29,9 @@ class CompleteArchiveContract(unittest.TestCase):
   self.assertEqual(got[0][1]["fields"]["metrics_json"]["items"],[1,2,3])
   self.assertNotIn("source_path",got[0][1]["fields"])
   self.assertIn("raw_xps_qwen_response",got[1][1]["coverage"]["not_available_from_main"])
+
+class PublisherActivationContract(unittest.TestCase):
+ def test_detailed_exports_are_explicit_opt_in(self):
+  src=(Path(__file__).resolve().parents[1]/"scripts/publish_run_reports.py").read_text(encoding="utf-8")
+  self.assertIn('args.detailed',src)
+  self.assertIn('parser.add_argument("--detailed"',src)

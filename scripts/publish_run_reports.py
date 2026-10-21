@@ -234,7 +234,7 @@ def main():
     parser.add_argument("--producer", choices=("all", "lab", "assistant"), default="all")
     parser.add_argument("--limit", type=int, default=0, help="0 = all runs and revisions; positive = maximum GitHub operations")
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
-    parser.add_argument("--summaries-only", action="store_true", help="Do not include detailed MAIN DB archives")
+    parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
     args = parser.parse_args()
     if args.limit < 0:
         parser.error("--limit must be >= 0")
@@ -248,7 +248,7 @@ def main():
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        streams = (collect(db),) if args.summaries_only else (collect(db), detailed_reports(db))
+        streams = (collect(db), detailed_reports(db)) if args.detailed else (collect(db),)
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
