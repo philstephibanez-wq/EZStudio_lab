@@ -40,8 +40,8 @@ final class ProfileAiRequestController extends AbstractController
         return $this->json(['request'=>$this->queue->get($id)]);
     }
 
-    #[Route('/internal/analysis/desktop/profile/{id<\\d+>}/scientific-items',name:'lab_internal_profile_scientific_items',methods:['GET'])]
-    public function scientificItems(Request $request,int $id,\\App\\Service\\AnalysisRunRegistry $runs): JsonResponse
+    #[Route('/internal/analysis/desktop/profile/{id<\d+>}/scientific-items',name:'lab_internal_profile_scientific_items',methods:['GET'])]
+    public function scientificItems(Request $request,int $id,\App\Service\AnalysisRunRegistry $runs): JsonResponse
     {
         $this->guard->assertAuthorized($request);
         $run=$runs->run($id);
