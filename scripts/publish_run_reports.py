@@ -246,9 +246,12 @@ def main():
     parser.add_argument("--detailed", action="store_true", help="Opt in to detailed MAIN DB diagnostics after security validation")
     parser.add_argument("--audit-detailed", action="store_true", help="Inspect detailed archive serialization and residual privacy risks without any GitHub upload")
     parser.add_argument("--detailed-only", action="store_true", help="Publish ONLY detailed archives (pilot mode, never summary reports)")
+    parser.add_argument("--archive-offset", type=int, default=0, help="Skip first N detailed records before decoding JSON (use with --detailed-only)")
     args = parser.parse_args()
     if args.detailed_only and (not args.detailed or args.audit_detailed):
         parser.error("--detailed-only requires --detailed and excludes --audit-detailed")
+    if args.archive_offset < 0 or (args.archive_offset and not args.detailed_only):
+        parser.error("--archive-offset requires --detailed-only and offset >= 0")
     if args.limit < 0:
         parser.error("--limit must be >= 0")
     if not Path(args.db).is_file():
@@ -261,7 +264,8 @@ def main():
     unchanged = 0
     failed = 0
     with sqlite3.connect(f"file:{Path(args.db).resolve().as_posix()}?mode=ro", uri=True) as db:
-        streams = (detailed_reports(db),) if (args.audit_detailed or args.detailed_only) else ((collect(db), detailed_reports(db)) if args.detailed else (collect(db),))
+        detailed = detailed_reports(db, offset=args.archive_offset, limit=args.limit or None) if args.detailed_only else detailed_reports(db)
+        streams = (detailed,) if (args.audit_detailed or args.detailed_only) else ((collect(db), detailed) if args.detailed else (collect(db),))
         for path, report in (item for stream in streams for item in stream):
             if args.producer != "all" and report["producer"] != args.producer:
                 continue
