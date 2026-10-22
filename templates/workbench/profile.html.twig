@@ -208,6 +208,19 @@
                                         <details class="profile-web-evidence">
                                             <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve validée') }}</summary>
                                             <p class="meta">Pistes documentaires non vérifiées. Ces résultats ne justifient ni BON ni FAUX.</p>
+                                            {% set live_evidence = web_item.evidence_review ?? {} %}
+                                            {% if live_evidence is not empty %}
+                                                <p><strong>Évaluation des documents lus : {{ (live_evidence.verdict ?? 'non_trouve')|upper }}</strong> — {{ live_evidence.reason ?? '' }}</p>
+                                                {% if live_evidence.reference_value ?? '' %}
+                                                    <p>Valeur externe explicite : {{ live_evidence.reference_value }}</p>
+                                                {% endif %}
+                                                {% for reference in live_evidence.references ?? [] %}
+                                                    {% if (reference.url ?? '') starts with 'https://' %}
+                                                        <p><a href="{{ reference.url }}" target="_blank" rel="noopener noreferrer">{{ reference.url }}</a> : {{ reference.reference_value ?? '' }}</p>
+                                                    {% endif %}
+                                                {% endfor %}
+                                                <p class="meta">Évaluation documentaire distincte du verdict PROFILE définitif ; version musicale exacte à confirmer.</p>
+                                            {% endif %}
                                             {% set assessment = web_item.assessment ?? {} %}
                                             {% if assessment.status_of_verdict ?? '' == 'advisory_only_pending_source_authentication' %}
                                                 <p><strong>Avis de recherche (non validé) : {{ assessment.proposed_verdict ?? 'NON TROUVE' }}</strong>
