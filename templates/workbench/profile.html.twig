@@ -156,6 +156,11 @@
                     ]) %}
                     <h3>Résultats musicaux PROFILE</h3>
                     <p class="meta">Chaque proposition musicale LAB est vérifiée séparément. BON ou FAUX exigent une source indépendante du même enregistrement ; sinon NON TROUVÉ. Aucun pourcentage non calibré.</p>
+                    {% if web_investigation is not empty and (web_investigation.status ?? '') != 'completed' %}
+                        <p class="meta"><strong>Recherche Internet indisponible</strong> — {{ web_investigation.reason ?? 'fournisseur Web non opérationnel' }}. Aucun résultat documentaire n'a été produit par cette étape.</p>
+                    {% elseif web_investigation is empty %}
+                        <p class="meta"><strong>Recherche Internet non exécutée</strong> pour cette révision (historique ou worker antérieur).</p>
+                    {% endif %}
                     <table class="profile-results-simple">
                         <thead><tr><th>Caractéristique</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
