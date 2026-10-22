@@ -105,11 +105,11 @@
                         </strong>
                         <span class="meta">
                             {{ revision.reviewer }} · {{ revision.updated_at }} ·
-                            {% if ai.provider != 'independent-evidence-verifier' %}confiance historique {{ (revision.confidence * 100)|number_format(0) }} %{% else %}vérification indépendante{% endif %}
+                            {% if (ai.provider ?? '') != 'independent-evidence-verifier' %}confiance historique {{ (revision.confidence * 100)|number_format(0) }} %{% else %}vérification indépendante{% endif %}
                         </span>
                     </div>
                     <p class="meta">
-                        {% if ai.provider == 'independent-evidence-verifier' %}
+                        {% if (ai.provider ?? '') == 'independent-evidence-verifier' %}
                             Vérificateur indépendant · résultats documentaires uniquement
                         {% else %}
                             IA historique : {{ ai.status ?? 'non renseigné' }} ·
