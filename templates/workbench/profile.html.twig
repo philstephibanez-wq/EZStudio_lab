@@ -160,7 +160,7 @@
                         {% for lab_row in lab_rows %}
                             {% set verdict_row = {} %}
                             {% for candidate in verified_rows %}
-                                {% if (candidate.key ?? '') == lab_row.key and (candidate.value ?? '') == lab_row.value %}
+                                {% if (candidate.key ?? '') == lab_row.key and ((candidate.value ?? '')|lower == (lab_row.value ?? '')|lower or (lab_row.key in ['lead_vocal','backing_vocals','vocal_harmonies','choir'] and ((candidate.value ?? '') in ['présent','absent']) and ((lab_row.value ?? '') in ['Présente','Présentes','Présents','Absente','Absentes','Absents'])) %}
                                     {% set verdict_row = candidate %}
                                 {% endif %}
                             {% endfor %}
