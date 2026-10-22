@@ -181,7 +181,7 @@
                                     {% if lab is not empty %}
                                         <details><summary>Données LAB détaillées</summary>
                                             <div class="meta">{{ module_id }}</div>
-                                            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto;font-size:0.8em">{{ value|json_encode(constant('JSON_PRETTY_PRINT') b-or constant('JSON_UNESCAPED_UNICODE')) }}</pre>
+                                            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto;font-size:0.8em">{{ value|json_encode }}</pre>
                                         </details>
                                     {% endif %}
                                 </td>
