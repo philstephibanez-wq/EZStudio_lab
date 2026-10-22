@@ -113,9 +113,6 @@
                         {{ ai.provider ?? 'inconnu' }} ·
                         {{ ai.model ?? 'modèle non renseigné' }}
                     </p>
-                    {% if ai.summary is defined and ai.summary %}
-                        <p>{{ ai.summary }}</p>
-                    {% endif %}
                     {% if not (external.available ?? false) %}
                         <p class="meta">
                             <strong>Non révisé sur preuves externes :</strong>
