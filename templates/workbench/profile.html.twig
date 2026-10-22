@@ -130,19 +130,25 @@
                     {% set pv_simple = selected_profile_run.diagnostics.profile_view ?? {} %}
                     {% set vocals_simple = pv_simple.vocal_profile.dimensions ?? {} %}
                     {% set musical_advisories = revision.comparison.dimension_advisories.dimensions ?? {} %}
+                    {# A decision state is not a musical value: never show possible/inconclusive/unknown as a measurement. #}
+                    {% set key_value = pv_simple.tonal.label ?? p.key.label ?? null %}
+                    {% set lead_decision = vocals_simple.lead_vocal.decision ?? null %}
+                    {% set backing_decision = vocals_simple.backing_vocals.decision ?? null %}
+                    {% set harmony_decision = vocals_simple.vocal_harmonies.decision ?? null %}
+                    {% set choir_decision = vocals_simple.choir.decision ?? pv_simple.choirs.decision ?? null %}
                     {% set musical_rows = [
-                        {'name':'Tempo','value': p.tempo.bpm is defined ? (p.tempo.bpm|number_format(1) ~ ' BPM') : 'Non déterminé','key':null},
-                        {'name':'Mesure','value': p.time_signature.label ?? p.time_signature.suggested_label ?? 'Non déterminée','key':null},
-                        {'name':'Tonalité','value': pv_simple.tonal.label ?? p.key.label ?? 'Non déterminée','key':null},
-                        {'name':'Genre musical','value': pv_simple.genre_hierarchy.primary.genre ?? 'Non déterminé','key':'genre'},
-                        {'name':'Instrumentation','value': (pv_simple.instrumentation.candidates ?? [])|map(x => x.label)|join(', ') ?: 'Non déterminée','key':'instrumentation'},
-                        {'name':'Voix principale','value': vocals_simple.lead_vocal.decision ?? 'Non déterminée','key':'lead_vocal'},
-                        {'name':'Voix d’accompagnement','value': vocals_simple.backing_vocals.decision ?? 'Non déterminée','key':'backing_vocals'},
-                        {'name':'Harmonies vocales','value': vocals_simple.vocal_harmonies.decision ?? 'Non déterminées','key':null},
-                        {'name':'Chœurs','value': vocals_simple.choir.decision ?? pv_simple.choirs.decision ?? 'Non déterminés','key':'choir'}
+                        {'name':'Tempo','value': p.tempo.bpm is defined and p.tempo.bpm is not null ? (p.tempo.bpm|number_format(1) ~ ' BPM') : null,'key':null},
+                        {'name':'Mesure','value': p.time_signature.label ?? p.time_signature.suggested_label ?? null,'key':null},
+                        {'name':'Tonalité','value': key_value,'key':null},
+                        {'name':'Genre musical','value': pv_simple.genre_hierarchy.primary.genre ?? null,'key':'genre'},
+                        {'name':'Instrumentation','value': (pv_simple.instrumentation.candidates ?? [])|map(x => x.label)|join(', ') ?: null,'key':'instrumentation'},
+                        {'name':'Voix principale','value': lead_decision == 'present' or lead_decision == 'detected' ? 'Voix principale détectée' : (lead_decision == 'absent' ? 'Voix principale non détectée' : null),'key':'lead_vocal'},
+                        {'name':'Voix d’accompagnement','value': backing_decision == 'present' or backing_decision == 'detected' ? 'Voix d’accompagnement détectées' : (backing_decision == 'absent' ? 'Voix d’accompagnement non détectées' : null),'key':'backing_vocals'},
+                        {'name':'Harmonies vocales','value': harmony_decision == 'present' or harmony_decision == 'detected' ? 'Harmonies vocales détectées' : (harmony_decision == 'absent' ? 'Harmonies vocales non détectées' : null),'key':null},
+                        {'name':'Chœurs','value': choir_decision == 'detected' or choir_decision == 'present' ? 'Chœurs détectés' : (choir_decision == 'absent' ? 'Chœurs non détectés' : null),'key':'choir'}
                     ] %}
                     <h3>Résultats musicaux PROFILE</h3>
-                    <p class="meta">Un résultat par caractéristique musicale. Les 12 moteurs, leurs paramètres, scores et diagnostics sont conservés dans les données LAB et les rapports privés, sans affichage ici.</p>
+                    <p class="meta">Uniquement des valeurs musicales identifiables. « — » signifie qu’aucune valeur n’est établie. Les états, scores et diagnostics demeurent dans les JSON privés.</p>
                     <table class="profile-results-simple">
                         <thead><tr><th style="width:23%">Caractéristique</th><th style="width:29%">LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
@@ -150,7 +156,7 @@
                             {% set advisory = musical.key ? (attribute(musical_advisories, musical.key) ?? {}) : {} %}
                             <tr>
                                 <td><strong>{{ musical.name }}</strong></td>
-                                <td>{{ musical.value }}</td>
+                                <td>{% if musical.value is not null and musical.value not in ['inconclusive', 'possible', 'unknown', 'not_scored', 'unavailable', 'undetermined'] %}{{ musical.value }}{% else %}<span class="meta">—</span>{% endif %}</td>
                                 <td>
                                     {% if musical.key is null %}
                                         <span class="meta">Non évalué séparément par l’Assistant</span>
