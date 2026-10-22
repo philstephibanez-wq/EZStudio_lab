@@ -126,6 +126,15 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
+                    {# Read already persisted Qwen module consultations; no new inference or scientific mutation. #}
+                    {% set review_modules = revision.comparison.module_consultations.results ?? [] %}
+                    {% set dimension_modules = {
+                        'genre': ['semantic.clap-open-vocabulary', 'semantic.panns-cnn14', 'semantic.passt-audioset'],
+                        'instrumentation': ['semantic.clap-open-vocabulary', 'semantic.panns-cnn14', 'semantic.passt-audioset'],
+                        'lead_vocal': ['semantic.clap-open-vocabulary', 'semantic.panns-cnn14', 'semantic.passt-audioset'],
+                        'backing_vocals': ['semantic.clap-open-vocabulary', 'semantic.panns-cnn14', 'semantic.passt-audioset'],
+                        'choir': ['semantic.panns-cnn14', 'semantic.passt-audioset', 'semantic.clap-open-vocabulary']
+                    } %}
                     <table>
                         <thead>
                             <tr>
@@ -152,7 +161,19 @@
 {% if item.recommendation is defined and item.recommendation %}<div class="meta">À examiner : {{ item.recommendation }}</div>{% endif %}
 {% elseif item.rationale is defined and item.rationale|trim is not empty %}
 {{ item.rationale }}
-{% else %}<span class="meta">Avis musical non fourni</span>{% endif %}</td><td>{{ item.decision ?? 'Non évalué' }}{% if item.reason is defined and item.reason|trim is not empty %}<div class="meta">Motif : {{ item.reason }}</div>{% endif %}</td>
+{% else %}
+{% set consulted = 0 %}
+{% for module in review_modules %}
+    {% if module.item_id in (attribute(dimension_modules, key) ?? []) and module.status == 'completed' and (module.assessment.summary ?? '')|trim is not empty %}
+        {% set consulted = consulted + 1 %}
+        <div class="meta"><strong>{{ module.item_id }}</strong> — consultation du moteur, non synthèse de la dimension :</div>
+        <div>{{ module.assessment.summary }}</div>
+        {% if module.assessment.uncertainty ?? '' %}<div class="meta">Limite : {{ module.assessment.uncertainty }}</div>{% endif %}
+    {% endif %}
+{% endfor %}
+{% if consulted == 0 %}<span class="meta">Aucun avis Qwen exploitable pour cette dimension</span>{% endif %}
+{% if consulted > 0 %}<div class="meta">Avis non validés ; scores moteurs non comparables ; aucune preuve documentaire ajoutée.</div>{% endif %}
+{% endif %}</td><td>{{ item.decision ?? 'Non évalué' }}{% if item.reason is defined and item.reason|trim is not empty %}<div class="meta">Motif : {{ item.reason }}</div>{% endif %}</td>
                                     <td>
                                         {% if item.confidence is defined and item.confidence is not null %}
                                             {{ (item.confidence * 100)|number_format(0) }} %
