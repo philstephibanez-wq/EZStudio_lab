@@ -126,6 +126,92 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
+                    {# Scientific module outputs retained verbatim. Only the presentation is condensed. #}
+                    {% set lab_modules = selected_profile_run.diagnostics.module_registry.modules ?? selected_profile_run.diagnostics.profile_view.modules ?? [] %}
+                    {% set assistant_modules = revision.comparison.module_consultations.results ?? [] %}
+                    {% set items = {
+                        'rhythm.librosa-beat': 'Rythme / tempo',
+                        'meter.chords-shared-r9': 'Mesure',
+                        'tonal.krumhansl-schmuckler': 'Tonalité (Krumhansl)',
+                        'tonal.madmom-key-cnn-2017': 'Tonalité (Madmom 2017)',
+                        'tonal.madmom-key-cnn-2018': 'Tonalité (Madmom 2018)',
+                        'descriptors.librosa-lowlevel': 'Caractéristiques sonores',
+                        'tuning.librosa-reference-pitch': 'Accordage',
+                        'semantic.clap-open-vocabulary': 'Genre / instruments (CLAP)',
+                        'embedding.mert-95m': 'Empreinte musicale (MERT 95M)',
+                        'embedding.mert-330m': 'Empreinte musicale (MERT 330M)',
+                        'semantic.panns-cnn14': 'Sons / instruments (PANNs)',
+                        'semantic.passt-audioset': 'Sons / instruments (PaSST)'
+                    } %}
+                    <h3>Les 12 résultats PROFILE</h3>
+                    <p class="meta">Valeurs LAB et avis de l’Assistant. Les scores et pourcentages restent conservés dans les données scientifiques et accessibles dans les détails, sans surcharger ce tableau.</p>
+                    <div style="overflow-x:auto">
+                    <table class="profile-results-simple">
+                        <thead><tr><th>Item</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
+                        <tbody>
+                        {% for module_id, name in items %}
+                            {% set lab = {} %}
+                            {% for candidate in lab_modules %}
+                                {% if (candidate.id ?? '') == module_id %}{% set lab = candidate %}{% endif %}
+                            {% endfor %}
+                            {% set review = {} %}
+                            {% for candidate in assistant_modules %}
+                                {% if (candidate.item_id ?? '') == module_id %}{% set review = candidate %}{% endif %}
+                            {% endfor %}
+                            {% set value = lab.normalized ?? {} %}
+                            {% set opinion = review.assessment ?? {} %}
+                            <tr>
+                                <td><strong>{{ loop.index }}. {{ name }}</strong></td>
+                                <td>
+                                    {% if lab is empty %}
+                                        <span class="meta">Valeur non exposée</span>
+                                    {% elseif lab.status ?? '' == 'error' %}
+                                        <span class="meta">Erreur scientifique signalée</span>
+                                    {% elseif value.label ?? '' %}
+                                        <strong>{{ value.label }}</strong>
+                                    {% elseif value.bpm is defined and value.bpm is not null %}
+                                        <strong>{{ value.bpm|number_format(1) }} BPM</strong>
+                                    {% elseif value.primary.label ?? '' %}
+                                        <strong>{{ value.primary.label }}</strong>
+                                    {% elseif value.primary.genre ?? '' %}
+                                        <strong>{{ value.primary.genre }}</strong>
+                                    {% else %}
+                                        <span class="meta">{{ (lab.status ?? 'Résultat') == 'ok' ? 'Mesures disponibles' : (lab.status ?? 'Résultat non renseigné') }}</span>
+                                    {% endif %}
+                                    {% if lab is not empty %}
+                                        <details><summary>Données LAB détaillées</summary>
+                                            <div class="meta">{{ module_id }}</div>
+                                            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto;font-size:0.8em">{{ value|json_encode(constant('JSON_PRETTY_PRINT') b-or constant('JSON_UNESCAPED_UNICODE')) }}</pre>
+                                        </details>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if review is empty %}
+                                        <span class="meta">Avis non enregistré</span>
+                                    {% elseif review.status == 'error' %}
+                                        <span class="meta">Consultation en erreur : {{ opinion.reason ?? 'cause non précisée' }}</span>
+                                    {% elseif review.status == 'abstain' %}
+                                        <span class="meta">Avis non concluant</span>
+                                        {% if opinion.summary ?? '' %}<div>{{ opinion.summary }}</div>{% endif %}
+                                    {% elseif opinion.summary ?? '' %}
+                                        {{ opinion.summary|length > 240 ? opinion.summary|slice(0,240) ~ '…' : opinion.summary }}
+                                        {% if opinion.summary|length > 240 or opinion.uncertainty ?? '' %}
+                                            <details><summary>Analyse complète</summary>
+                                                <div>{{ opinion.summary }}</div>
+                                                {% if opinion.uncertainty ?? '' %}<div class="meta">Incertitude : {{ opinion.uncertainty }}</div>{% endif %}
+                                            </details>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="meta">Aucun avis exploitable</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    <details class="profile-ai-technical">
+                        <summary>Analyse transversale, validation et diagnostics (détails)</summary>
                     {# Separate consultative musical interpretation from external proof/scoring. #}
                     {% set musical_dimensions = revision.comparison.dimension_advisories.dimensions ?? {} %}
                                         <table>
@@ -241,6 +327,7 @@
                             </table>
                         </details>
                     {% endif %}
+                    </details>
                     {% if revision.sources is empty %}<p class="meta">Références Assistant : aucune URL enregistrée pour cette révision.</p>{% else %}
                         <details>
                             <summary>
