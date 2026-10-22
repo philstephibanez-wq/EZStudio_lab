@@ -423,13 +423,13 @@
 </div>
 
 <details class="card profile-preset-technical">
-<summary><strong>Preset PROFILE — modules et diagnostics techniques</strong> <span class="meta">(déplier)</span></summary>
-<p class="meta">Détails scientifiques conservés, masqués par défaut.</p>
+<summary><strong>Preset PROFILE — réglages et diagnostics</strong></summary>
+<p class="meta">Informations techniques du preset ; sans incidence sur les résultats affichés.</p>
 <div class="card">
-  <h2>Gènes PROFILE</h2>
-  <div class="meta">{{ pc.ok ?? 0 }} gène(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
+  <h3>Modules du preset PROFILE</h3>
+  <div class="meta">{{ pc.ok ?? 0 }} module(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
   {% if modules %}
-  <table><thead><tr><th>Gène</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
+  <table><thead><tr><th>Module</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
   {% for e in modules %}
     <tr>
       <td>{{ e.name ?? e.id }}{% if e.error %}<div class="meta">{{ e.error }}</div>{% endif %}</td>
