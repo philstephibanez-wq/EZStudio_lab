@@ -20,7 +20,7 @@ final class LabVersionExtension extends AbstractExtension implements GlobalsInte
             throw new \RuntimeException('lab_version_unreadable');
         }
         $version = trim($raw);
-        if (!preg_match('/^\d+\.\d+(?:[a-z]+)?$/D', $version)) {
+        if (!preg_match('/^\d+\.\d+(?:[a-z]+)?(?:\(\d+\))?$/D', $version)) {
             throw new \RuntimeException('lab_version_invalid');
         }
 
