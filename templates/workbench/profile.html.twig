@@ -208,6 +208,18 @@
                                         <details class="profile-web-evidence">
                                             <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve validée') }}</summary>
                                             <p class="meta">Pistes documentaires non vérifiées. Ces résultats ne justifient ni BON ni FAUX.</p>
+                                            {% set assessment = web_item.assessment ?? {} %}
+                                            {% if assessment.status_of_verdict ?? '' == 'advisory_only_pending_source_authentication' %}
+                                                <p><strong>Avis de recherche (non validé) : {{ assessment.proposed_verdict ?? 'NON TROUVE' }}</strong>
+                                                {% if assessment.reference_value ?? '' %} · Valeur externe proposée : {{ assessment.reference_value }}{% endif %}</p>
+                                                {% if assessment.reasoning ?? '' %}<p class="meta">{{ assessment.reasoning }}</p>{% endif %}
+                                                {% for reference in assessment.references ?? [] %}
+                                                    {% if reference.url is defined and reference.url starts with 'https://' %}
+                                                        <p class="meta">Référence citée : <a href="{{ reference.url }}" target="_blank" rel="noopener noreferrer">{{ reference.url }}</a>
+                                                        · {{ reference.reference_value ?? '' }} · {{ reference.trust_rationale ?? '' }}</p>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
                                             {% if (web_item.citation_urls ?? []) is not empty %}
                                                 <ul>
                                                     {% for source_url in web_item.citation_urls %}
