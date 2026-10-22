@@ -144,7 +144,7 @@
                         'semantic.passt-audioset': 'Sons / instruments (PaSST)'
                     } %}
                     <h3>Les 12 résultats PROFILE</h3>
-                    <p class="meta">Valeurs LAB et avis de l’Assistant. Les scores et pourcentages restent conservés dans les données scientifiques et accessibles dans les détails, sans surcharger ce tableau.</p>
+                    <p class="meta">Valeurs musicales LAB et avis de l’Assistant. Scores, pourcentages et diagnostics restent conservés dans les JSON et les rapports privés, sans affichage dans ce tableau.</p>
                     <div style="overflow-x:auto">
                     <table class="profile-results-simple">
                         <thead><tr><th>Item</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
@@ -178,12 +178,7 @@
                                     {% else %}
                                         <span class="meta">{{ (lab.status ?? 'Résultat') == 'ok' ? 'Mesures disponibles' : (lab.status ?? 'Résultat non renseigné') }}</span>
                                     {% endif %}
-                                    {% if lab is not empty %}
-                                        <details><summary>Données LAB détaillées</summary>
-                                            <div class="meta">{{ module_id }}</div>
-                                            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto;font-size:0.8em">{{ value|json_encode }}</pre>
-                                        </details>
-                                    {% endif %}
+
                                 </td>
                                 <td>
                                     {% if review is empty %}
@@ -195,12 +190,6 @@
                                         {% if opinion.summary ?? '' %}<div>{{ opinion.summary }}</div>{% endif %}
                                     {% elseif opinion.summary ?? '' %}
                                         {{ opinion.summary|length > 240 ? opinion.summary|slice(0,240) ~ '…' : opinion.summary }}
-                                        {% if opinion.summary|length > 240 or opinion.uncertainty ?? '' %}
-                                            <details><summary>Analyse complète</summary>
-                                                <div>{{ opinion.summary }}</div>
-                                                {% if opinion.uncertainty ?? '' %}<div class="meta">Incertitude : {{ opinion.uncertainty }}</div>{% endif %}
-                                            </details>
-                                        {% endif %}
                                     {% else %}
                                         <span class="meta">Aucun avis exploitable</span>
                                     {% endif %}
