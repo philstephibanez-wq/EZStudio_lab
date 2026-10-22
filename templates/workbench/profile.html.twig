@@ -105,13 +105,17 @@
                         </strong>
                         <span class="meta">
                             {{ revision.reviewer }} · {{ revision.updated_at }} ·
-                            confiance générale {{ (revision.confidence * 100)|number_format(0) }} %
+                            {% if ai.provider != 'independent-evidence-verifier' %}confiance historique {{ (revision.confidence * 100)|number_format(0) }} %{% else %}vérification indépendante{% endif %}
                         </span>
                     </div>
                     <p class="meta">
-                        IA : {{ ai.status ?? 'non renseigné' }} ·
-                        {{ ai.provider ?? 'inconnu' }} ·
-                        {{ ai.model ?? 'modèle non renseigné' }}
+                        {% if ai.provider == 'independent-evidence-verifier' %}
+                            Vérificateur indépendant · résultats documentaires uniquement
+                        {% else %}
+                            IA historique : {{ ai.status ?? 'non renseigné' }} ·
+                            {{ ai.provider ?? 'inconnu' }} ·
+                            {{ ai.model ?? 'modèle non renseigné' }}
+                        {% endif %}
                     </p>
                     {% if not (external.available ?? false) %}
                         <p class="meta">
@@ -149,7 +153,7 @@
                         {'key':'choir','label':'Chœurs','value':(voice_music.choir.decision ?? pv_music.choirs.decision ?? '') in ['present','detected'] ? 'Présents' : ((voice_music.choir.decision ?? pv_music.choirs.decision ?? '') == 'absent' ? 'Absents' : null)}
                     ]) %}
                     <h3>Résultats musicaux PROFILE</h3>
-                    <p class="meta">Les résultats LAB restent visibles même lorsque l’Assistant n’a pas encore fourni de vérification indépendante.</p>
+                    <p class="meta">Chaque proposition musicale LAB est vérifiée séparément. BON ou FAUX exigent une source indépendante du même enregistrement ; sinon NON TROUVÉ. Aucun pourcentage non calibré.</p>
                     <table class="profile-results-simple">
                         <thead><tr><th>Caractéristique</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
