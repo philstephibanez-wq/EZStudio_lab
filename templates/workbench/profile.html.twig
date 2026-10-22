@@ -126,79 +126,46 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
-                    {# Scientific module outputs retained verbatim. Only the presentation is condensed. #}
-                    {% set lab_modules = selected_profile_run.diagnostics.module_registry.modules ?? selected_profile_run.diagnostics.profile_view.modules ?? [] %}
-                    {% set assistant_modules = revision.comparison.module_consultations.results ?? [] %}
-                    {% set items = {
-                        'rhythm.librosa-beat': 'Rythme / tempo',
-                        'meter.chords-shared-r9': 'Mesure',
-                        'tonal.krumhansl-schmuckler': 'Tonalité (Krumhansl)',
-                        'tonal.madmom-key-cnn-2017': 'Tonalité (Madmom 2017)',
-                        'tonal.madmom-key-cnn-2018': 'Tonalité (Madmom 2018)',
-                        'descriptors.librosa-lowlevel': 'Caractéristiques sonores',
-                        'tuning.librosa-reference-pitch': 'Accordage',
-                        'semantic.clap-open-vocabulary': 'Genre / instruments (CLAP)',
-                        'embedding.mert-95m': 'Empreinte musicale (MERT 95M)',
-                        'embedding.mert-330m': 'Empreinte musicale (MERT 330M)',
-                        'semantic.panns-cnn14': 'Sons / instruments (PANNs)',
-                        'semantic.passt-audioset': 'Sons / instruments (PaSST)'
-                    } %}
-                    <h3>Les 12 résultats PROFILE</h3>
-                    <p class="meta">Valeurs musicales LAB et avis de l’Assistant. Scores, pourcentages et diagnostics restent conservés dans les JSON et les rapports privés, sans affichage dans ce tableau.</p>
-                    <div style="overflow-x:auto">
+                    {# Musical dimensions, not scientific engine inventory. Technical output is preserved. #}
+                    {% set pv_simple = selected_profile_run.diagnostics.profile_view ?? {} %}
+                    {% set vocals_simple = pv_simple.vocal_profile.dimensions ?? {} %}
+                    {% set musical_advisories = revision.comparison.dimension_advisories.dimensions ?? {} %}
+                    {% set musical_rows = [
+                        {'name':'Tempo','value': p.tempo.bpm is defined ? (p.tempo.bpm|number_format(1) ~ ' BPM') : 'Non déterminé','key':null},
+                        {'name':'Mesure','value': p.time_signature.label ?? p.time_signature.suggested_label ?? 'Non déterminée','key':null},
+                        {'name':'Tonalité','value': pv_simple.tonal.label ?? p.key.label ?? 'Non déterminée','key':null},
+                        {'name':'Genre musical','value': pv_simple.genre_hierarchy.primary.genre ?? 'Non déterminé','key':'genre'},
+                        {'name':'Instrumentation','value': (pv_simple.instrumentation.candidates ?? [])|map(x => x.label)|join(', ') ?: 'Non déterminée','key':'instrumentation'},
+                        {'name':'Voix principale','value': vocals_simple.lead_vocal.decision ?? 'Non déterminée','key':'lead_vocal'},
+                        {'name':'Voix d’accompagnement','value': vocals_simple.backing_vocals.decision ?? 'Non déterminée','key':'backing_vocals'},
+                        {'name':'Harmonies vocales','value': vocals_simple.vocal_harmonies.decision ?? 'Non déterminées','key':null},
+                        {'name':'Chœurs','value': vocals_simple.choir.decision ?? pv_simple.choirs.decision ?? 'Non déterminés','key':'choir'}
+                    ] %}
+                    <h3>Résultats musicaux PROFILE</h3>
+                    <p class="meta">Un résultat par caractéristique musicale. Les 12 moteurs, leurs paramètres, scores et diagnostics sont conservés dans les données LAB et les rapports privés, sans affichage ici.</p>
                     <table class="profile-results-simple">
-                        <thead><tr><th>Item</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
+                        <thead><tr><th style="width:23%">Caractéristique</th><th style="width:29%">LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
-                        {% for module_id, name in items %}
-                            {% set lab = {} %}
-                            {% for candidate in lab_modules %}
-                                {% if (candidate.id ?? '') == module_id %}{% set lab = candidate %}{% endif %}
-                            {% endfor %}
-                            {% set review = {} %}
-                            {% for candidate in assistant_modules %}
-                                {% if (candidate.item_id ?? '') == module_id %}{% set review = candidate %}{% endif %}
-                            {% endfor %}
-                            {% set value = lab.normalized ?? {} %}
-                            {% set opinion = review.assessment ?? {} %}
+                        {% for musical in musical_rows %}
+                            {% set advisory = musical.key ? (attribute(musical_advisories, musical.key) ?? {}) : {} %}
                             <tr>
-                                <td><strong>{{ loop.index }}. {{ name }}</strong></td>
+                                <td><strong>{{ musical.name }}</strong></td>
+                                <td>{{ musical.value }}</td>
                                 <td>
-                                    {% if lab is empty %}
-                                        <span class="meta">Valeur non exposée</span>
-                                    {% elseif lab.status ?? '' == 'error' %}
-                                        <span class="meta">Erreur scientifique signalée</span>
-                                    {% elseif value.label ?? '' %}
-                                        <strong>{{ value.label }}</strong>
-                                    {% elseif value.bpm is defined and value.bpm is not null %}
-                                        <strong>{{ value.bpm|number_format(1) }} BPM</strong>
-                                    {% elseif value.primary.label ?? '' %}
-                                        <strong>{{ value.primary.label }}</strong>
-                                    {% elseif value.primary.genre ?? '' %}
-                                        <strong>{{ value.primary.genre }}</strong>
-                                    {% else %}
-                                        <span class="meta">{{ (lab.status ?? 'Résultat') == 'ok' ? 'Mesures disponibles' : (lab.status ?? 'Résultat non renseigné') }}</span>
-                                    {% endif %}
-
-                                </td>
-                                <td>
-                                    {% if review is empty %}
-                                        <span class="meta">Avis non enregistré</span>
-                                    {% elseif review.status == 'error' %}
-                                        <span class="meta">Consultation en erreur : {{ opinion.reason ?? 'cause non précisée' }}</span>
-                                    {% elseif review.status == 'abstain' %}
+                                    {% if musical.key is null %}
+                                        <span class="meta">Non évalué séparément par l’Assistant</span>
+                                    {% elseif advisory.status ?? '' == 'abstain' %}
                                         <span class="meta">Avis non concluant</span>
-                                        {% if opinion.summary ?? '' %}<div>{{ opinion.summary }}</div>{% endif %}
-                                    {% elseif opinion.summary ?? '' %}
-                                        {{ opinion.summary|length > 240 ? opinion.summary|slice(0,240) ~ '…' : opinion.summary }}
+                                    {% elseif advisory.advisory ?? '' %}
+                                        {{ advisory.advisory }}
                                     {% else %}
-                                        <span class="meta">Aucun avis exploitable</span>
+                                        <span class="meta">Avis non disponible</span>
                                     {% endif %}
                                 </td>
                             </tr>
                         {% endfor %}
                         </tbody>
                     </table>
-                    </div>
                     <details class="profile-ai-technical">
                         <summary>Analyse transversale, validation et diagnostics (détails)</summary>
                     {# Separate consultative musical interpretation from external proof/scoring. #}
