@@ -131,6 +131,8 @@
                     {% set pv_music = selected_profile_run.diagnostics.profile_view ?? {} %}
                     {% set voice_music = pv_music.vocal_profile.dimensions ?? {} %}
                     {% set verified_rows = revision.comparison.final_verification.assertions ?? [] %}
+                    {% set web_investigation = revision.comparison.final_verification.web_investigation ?? {} %}
+                    {% set web_items = web_investigation.items ?? [] %}
                     {% set lab_rows = [
                         {'key':'tempo','label':'Tempo','value':p.tempo.bpm is defined and p.tempo.bpm is not null ? p.tempo.bpm|number_format(1) ~ ' BPM' : null},
                         {'key':'meter','label':'Mesure','value':p.time_signature.label ?? p.time_signature.suggested_label ?? null},
@@ -169,6 +171,12 @@
                                     {% set verdict_row = candidate %}
                                 {% endif %}
                             {% endfor %}
+                            {% set web_item = {} %}
+                            {% for web_candidate in web_items %}
+                                {% if (web_candidate.key ?? '') == lab_row.key %}
+                                    {% set web_item = web_candidate %}
+                                {% endif %}
+                            {% endfor %}
                             <tr>
                                 <td><strong>{{ lab_row.label }}</strong></td>
                                 <td>{{ lab_row.value ?? '—' }}</td>
@@ -190,6 +198,31 @@
                                                 {% endif %}
                                             {% endfor %}
                                         {% endif %}
+                                    {% endif %}
+                                    {% if web_item is not empty %}
+                                        <details class="profile-web-evidence">
+                                            <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve validée') }}</summary>
+                                            <p class="meta">Pistes documentaires non vérifiées. Ces résultats ne justifient ni BON ni FAUX.</p>
+                                            {% if (web_item.citation_urls ?? []) is not empty %}
+                                                <ul>
+                                                    {% for source_url in web_item.citation_urls %}
+                                                        {% if source_url starts with 'https://' %}
+                                                            <li><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a></li>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </ul>
+                                            {% else %}
+                                                <p class="meta">Aucune référence Web citée pour cet item.</p>
+                                            {% endif %}
+                                            {% if web_item.investigator_text ?? '' %}
+                                                <p class="meta">{{ web_item.investigator_text }}</p>
+                                            {% endif %}
+                                            {% if web_item.reason ?? '' %}
+                                                <p class="meta">Diagnostic : {{ web_item.reason }}</p>
+                                            {% endif %}
+                                        </details>
+                                    {% elseif web_investigation is not empty %}
+                                        <span class="meta"> · Recherche Internet non disponible pour cet item</span>
                                     {% endif %}
                                 </td>
                             </tr>
