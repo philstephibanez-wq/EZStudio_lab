@@ -126,35 +126,59 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
-                    {# The verifier returns evidence-backed verdicts on final LAB assertions only. #}
-                    {% set verification = revision.comparison.final_verification ?? {} %}
-                    {% set verified_rows = verification.assertions ?? [] %}
+                    {# LAB values are ALWAYS rendered; verification may be absent on historical revisions. #}
+                    {% set pv_music = selected_profile_run.diagnostics.profile_view ?? {} %}
+                    {% set voice_music = pv_music.vocal_profile.dimensions ?? {} %}
+                    {% set verified_rows = revision.comparison.final_verification.assertions ?? [] %}
+                    {% set lab_rows = [
+                        {'key':'tempo','label':'Tempo','value':p.tempo.bpm is defined and p.tempo.bpm is not null ? p.tempo.bpm|number_format(1) ~ ' BPM' : null},
+                        {'key':'meter','label':'Mesure','value':p.time_signature.label ?? p.time_signature.suggested_label ?? null},
+                        {'key':'key','label':'Tonalité','value':pv_music.tonal.label ?? p.key.label ?? null},
+                        {'key':'genre','label':'Genre musical','value':pv_music.genre_hierarchy.primary.genre ?? null},
+                        {'key':'lead_vocal','label':'Voix principale','value':(voice_music.lead_vocal.decision ?? '') in ['present','detected'] ? 'Présente' : ((voice_music.lead_vocal.decision ?? '') == 'absent' ? 'Absente' : null)},
+                        {'key':'backing_vocals','label':'Voix d’accompagnement','value':(voice_music.backing_vocals.decision ?? '') in ['present','detected'] ? 'Présentes' : ((voice_music.backing_vocals.decision ?? '') == 'absent' ? 'Absentes' : null)},
+                        {'key':'vocal_harmonies','label':'Harmonies vocales','value':(voice_music.vocal_harmonies.decision ?? '') in ['present','detected'] ? 'Présentes' : ((voice_music.vocal_harmonies.decision ?? '') == 'absent' ? 'Absentes' : null)},
+                        {'key':'choir','label':'Chœurs','value':(voice_music.choir.decision ?? pv_music.choirs.decision ?? '') in ['present','detected'] ? 'Présents' : ((voice_music.choir.decision ?? pv_music.choirs.decision ?? '') == 'absent' ? 'Absents' : null)}
+                    ] %}
+                    {% for instrument in pv_music.instrumentation.candidates ?? [] %}
+                        {% set lab_rows = lab_rows|merge([{'key':'instrument:' ~ loop.index0,'label':'Instrument','value':instrument.label ?? null}]) %}
+                    {% endfor %}
                     <h3>Résultats musicaux PROFILE</h3>
-                    <p class="meta">Résultats LAB et vérifications indépendantes. Aucun détail de moteur scientifique n’est affiché ici.</p>
+                    <p class="meta">Les résultats LAB restent visibles même lorsque l’Assistant n’a pas encore fourni de vérification indépendante.</p>
                     <table class="profile-results-simple">
                         <thead><tr><th>Caractéristique</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
-                        {% for assertion in verified_rows %}
+                        {% for lab_row in lab_rows %}
+                            {% set verdict_row = {} %}
+                            {% for candidate in verified_rows %}
+                                {% if (candidate.key ?? '') == lab_row.key and (candidate.value ?? '') == lab_row.value %}
+                                    {% set verdict_row = candidate %}
+                                {% endif %}
+                            {% endfor %}
                             <tr>
-                                <td><strong>{{ assertion.label }}</strong></td>
-                                <td>{{ assertion.value }}</td>
+                                <td><strong>{{ lab_row.label }}</strong></td>
+                                <td>{{ lab_row.value ?? '—' }}</td>
                                 <td>
-                                    {% set verdict = assertion.verdict ?? 'non_trouve' %}
-                                    <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'FAUX' : 'NON TROUVÉ') }}</strong>
-                                    {% if verdict in ['bon','faux'] and assertion.confidence_pct is defined and assertion.confidence_pct is not null %}
-                                        · {{ assertion.confidence_pct|number_format(0) }} %
-                                    {% endif %}
-                                    {% if verdict in ['bon','faux'] %}
-                                        {% for source in assertion.sources ?? [] %}
-                                            {% if source.url is defined and source.url starts with 'https://' %}
-                                                · <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title ?? 'Source' }}</a>
-                                            {% endif %}
-                                        {% endfor %}
+                                    {% if lab_row.value is null %}
+                                        <span class="meta">Aucune valeur LAB à vérifier</span>
+                                    {% elseif verdict_row is empty %}
+                                        <span class="meta">Vérification non effectuée</span>
+                                    {% else %}
+                                        {% set verdict = verdict_row.verdict ?? 'non_trouve' %}
+                                        <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'FAUX' : 'NON TROUVÉ') }}</strong>
+                                        {% if verdict in ['bon','faux'] and verdict_row.confidence_pct is defined and verdict_row.confidence_pct is not null %}
+                                            · {{ verdict_row.confidence_pct|number_format(0) }} %
+                                        {% endif %}
+                                        {% if verdict in ['bon','faux'] %}
+                                            {% for source in verdict_row.sources ?? [] %}
+                                                {% if source.url is defined and source.url starts with 'https://' %}
+                                                    · <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title ?? 'Source' }}</a>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>
-                        {% else %}
-                            <tr><td colspan="3" class="meta">Aucune vérification indépendante enregistrée dans cette révision.</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
