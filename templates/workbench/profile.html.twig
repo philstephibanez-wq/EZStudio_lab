@@ -422,7 +422,98 @@
   {% endif %}
 </div>
 
-{# Technical preset/module tables hidden from musician view. Scientific JSON retained. #}
+<details class="card profile-preset-technical">
+<summary><strong>Preset PROFILE — modules et diagnostics techniques</strong> <span class="meta">(déplier)</span></summary>
+<p class="meta">Détails scientifiques conservés, masqués par défaut.</p>
+<div class="card">
+  <h2>Gènes PROFILE</h2>
+  <div class="meta">{{ pc.ok ?? 0 }} gène(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
+  {% if modules %}
+  <table><thead><tr><th>Gène</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
+  {% for e in modules %}
+    <tr>
+      <td>{{ e.name ?? e.id }}{% if e.error %}<div class="meta">{{ e.error }}</div>{% endif %}</td>
+      <td>{{ e.family ?? '—' }}</td>
+      <td><span class="badge {{ e.status == 'ok' ? 'ok' : (e.status == 'error' ? 'warn' : '') }}">{{ e.status }}</span></td>
+      <td>{{ e.device ?? '—' }}</td>
+      <td>{% if e.elapsed_seconds is not null %}{{ e.elapsed_seconds|number_format(2) }} s{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% endif %}
+</div>
+
+{% if pv.tonal is defined and pv.tonal.label is defined %}
+<div class="card"><h2>Consensus tonal</h2>
+  <div><strong>{{ pv.tonal.label }}</strong> · support {{ pv.tonal.support ?? 0 }}/{{ pv.tonal.sources|length }}</div>
+  <table><thead><tr><th>Gène</th><th>Tonalité</th><th>Confiance source</th></tr></thead><tbody>
+  {% for s in pv.tonal.sources ?? [] %}
+    {% set legacy_source_key = 'ped' ~ 'al' %}
+    <tr><td>{{ s.module is defined ? s.module : (attribute(s, 'ge' ~ 'ne') ?? '—') }}</td><td>{{ s.label }}</td><td>{% if s.confidence is not null %}{{ (s.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+{% if pv.audioset is defined and pv.audioset.agreements is defined %}
+<div class="card"><h2>Consensus AudioSet · PANNs / PaSST</h2>
+  <div class="meta">Confidence opérationnelle non calibrée : décroissance exponentielle du rang absolu + persistance temporelle top-5/top-10, puis minimum entre PANNs et PaSST. Seuil de décision 60 %. Les labels génériques restent visibles mais ne sont pas retenus. Ce pourcentage n'est pas une probabilité calibrée.</div>
+  {% if pv.audioset.agreements %}
+  <table><thead><tr><th>Label</th><th>Support</th><th>Scores source</th><th>Confidence</th><th>Stabilité</th><th>Décision</th></tr></thead><tbody>
+  {% for a in pv.audioset.agreements %}
+    <tr>
+      <td>{{ a.label }}</td>
+      <td>{{ a.support }}</td>
+      <td>{% for s in a.sources ?? [] %}{% set legacy_source_key = 'ped' ~ 'al' %}{{ s.module is defined ? s.module : (attribute(s, 'ge' ~ 'ne') ?? '—') }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+      <td>{% if a.confidence is defined and a.confidence is not null %}{{ (a.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td>
+      <td>
+        {% if a.source_evidence is defined and a.source_evidence %}
+          {% for e in a.source_evidence %}
+            {{ e.module is defined ? e.module : (attribute(e, 'ge' ~ 'ne') ?? '—') }} : rang {{ e.rank ?? '—' }}/{{ e.class_count ?? '—' }}, rang-score {% if e.rank_score is defined %}{{ (e.rank_score*100)|number_format(0) }}%{% else %}—{% endif %}, top-5 {% if e.top5_support is defined %}{{ (e.top5_support*100)|number_format(0) }}%{% else %}—{% endif %}, top-10 {{ (e.top10_support*100)|number_format(0) }}%{% if not loop.last %}<br>{% endif %}
+          {% endfor %}
+        {% elseif a.temporal_support_min is defined and a.temporal_support_min is not null %}
+          {{ (a.temporal_support_min*100)|number_format(0) }}%
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if a.decision is defined and a.decision == 'accepted' %}
+          <span class="badge ok">retenu</span>
+        {% elseif a.decision is defined and a.decision == 'contextual' %}
+          <span class="badge">contextuel</span>
+        {% elseif a.decision is defined and a.decision == 'generic' %}
+          <span class="badge">générique</span>
+        {% elseif a.decision is defined %}
+          <span class="badge">incertain</span>
+        {% else %}
+          —
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="meta">Aucun label commun entre moteurs.</p>{% endif %}
+</div>
+{% endif %}
+
+{% if pv.embeddings is defined and pv.embeddings %}
+<div class="card"><h2>Embeddings MERT</h2>
+<table><thead><tr><th>Gène</th><th>État</th><th>Dimension</th><th>Chunks</th><th>Norme</th><th>Variation temporelle</th></tr></thead><tbody>
+{% for e in pv.embeddings %}
+<tr><td>{{ e.name }}</td><td>{{ e.status }}</td><td>{{ e.hidden_size ?? '—' }}</td><td>{{ e.chunk_count ?? '—' }}</td><td>{{ e.embedding_norm ?? '—' }}</td><td>{{ e.temporal_std_mean ?? '—' }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endif %}
+
+<div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
+<div class="card"><h2>Genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Analyse du genre indisponible.</p>{% endif %}</div>
+<div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
+<div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
+<div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
+
+</details>
 <div class="card"><a class="button secondary" href="{{ path('scientific_run',{id:selected_profile_run.id}) }}">Run PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
 {% if profile_active %}
 <div data-profile-live-refresh="1" hidden></div>
