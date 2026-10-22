@@ -134,15 +134,23 @@
                         {'key':'tempo','label':'Tempo','value':p.tempo.bpm is defined and p.tempo.bpm is not null ? p.tempo.bpm|number_format(1) ~ ' BPM' : null},
                         {'key':'meter','label':'Mesure','value':p.time_signature.label ?? p.time_signature.suggested_label ?? null},
                         {'key':'key','label':'Tonalité','value':pv_music.tonal.label ?? p.key.label ?? null},
-                        {'key':'genre','label':'Genre musical','value':pv_music.genre_hierarchy.primary.genre ?? null},
+                        {'key':'genre','label':'Genre musical','value':pv_music.genre_hierarchy.primary.genre ?? null}
+                    ] %}
+                    {% set instrument_labels = [] %}
+                    {% for instrument in pv_music.instrumentation.candidates ?? [] %}
+                        {% if instrument.label ?? '' %}
+                            {% set instrument_labels = instrument_labels|merge([instrument.label]) %}
+                        {% endif %}
+                    {% endfor %}
+                    {% for instrument_label in instrument_labels %}
+                        {% set lab_rows = lab_rows|merge([{'key':'instrument:' ~ loop.index0,'label':'Instrument ' ~ loop.index,'value':instrument_label}]) %}
+                    {% endfor %}
+                    {% set lab_rows = lab_rows|merge([
                         {'key':'lead_vocal','label':'Voix principale','value':(voice_music.lead_vocal.decision ?? '') in ['present','detected'] ? 'Présente' : ((voice_music.lead_vocal.decision ?? '') == 'absent' ? 'Absente' : null)},
                         {'key':'backing_vocals','label':'Voix d’accompagnement','value':(voice_music.backing_vocals.decision ?? '') in ['present','detected'] ? 'Présentes' : ((voice_music.backing_vocals.decision ?? '') == 'absent' ? 'Absentes' : null)},
                         {'key':'vocal_harmonies','label':'Harmonies vocales','value':(voice_music.vocal_harmonies.decision ?? '') in ['present','detected'] ? 'Présentes' : ((voice_music.vocal_harmonies.decision ?? '') == 'absent' ? 'Absentes' : null)},
                         {'key':'choir','label':'Chœurs','value':(voice_music.choir.decision ?? pv_music.choirs.decision ?? '') in ['present','detected'] ? 'Présents' : ((voice_music.choir.decision ?? pv_music.choirs.decision ?? '') == 'absent' ? 'Absents' : null)}
-                    ] %}
-                    {% for instrument in pv_music.instrumentation.candidates ?? [] %}
-                        {% set lab_rows = lab_rows|merge([{'key':'instrument:' ~ loop.index0,'label':'Instrument','value':instrument.label ?? null}]) %}
-                    {% endfor %}
+                    ]) %}
                     <h3>Résultats musicaux PROFILE</h3>
                     <p class="meta">Les résultats LAB restent visibles même lorsque l’Assistant n’a pas encore fourni de vérification indépendante.</p>
                     <table class="profile-results-simple">
