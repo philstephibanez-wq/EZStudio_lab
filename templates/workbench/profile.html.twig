@@ -126,49 +126,35 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
-                    {# Musical dimensions, not scientific engine inventory. Technical output is preserved. #}
-                    {% set pv_simple = selected_profile_run.diagnostics.profile_view ?? {} %}
-                    {% set vocals_simple = pv_simple.vocal_profile.dimensions ?? {} %}
-                    {% set musical_advisories = revision.comparison.dimension_advisories.dimensions ?? {} %}
-                    {# A decision state is not a musical value: never show possible/inconclusive/unknown as a measurement. #}
-                    {% set key_value = pv_simple.tonal.label ?? p.key.label ?? null %}
-                    {% set lead_decision = vocals_simple.lead_vocal.decision ?? null %}
-                    {% set backing_decision = vocals_simple.backing_vocals.decision ?? null %}
-                    {% set harmony_decision = vocals_simple.vocal_harmonies.decision ?? null %}
-                    {% set choir_decision = vocals_simple.choir.decision ?? pv_simple.choirs.decision ?? null %}
-                    {% set musical_rows = [
-                        {'name':'Tempo','value': p.tempo.bpm is defined and p.tempo.bpm is not null ? (p.tempo.bpm|number_format(1) ~ ' BPM') : null,'key':null},
-                        {'name':'Mesure','value': p.time_signature.label ?? p.time_signature.suggested_label ?? null,'key':null},
-                        {'name':'Tonalité','value': key_value,'key':null},
-                        {'name':'Genre musical','value': pv_simple.genre_hierarchy.primary.genre ?? null,'key':'genre'},
-                        {'name':'Instrumentation','value': (pv_simple.instrumentation.candidates ?? [])|map(x => x.label)|join(', ') ?: null,'key':'instrumentation'},
-                        {'name':'Voix principale','value': lead_decision == 'present' or lead_decision == 'detected' ? 'Voix principale détectée' : (lead_decision == 'absent' ? 'Voix principale non détectée' : null),'key':'lead_vocal'},
-                        {'name':'Voix d’accompagnement','value': backing_decision == 'present' or backing_decision == 'detected' ? 'Voix d’accompagnement détectées' : (backing_decision == 'absent' ? 'Voix d’accompagnement non détectées' : null),'key':'backing_vocals'},
-                        {'name':'Harmonies vocales','value': harmony_decision == 'present' or harmony_decision == 'detected' ? 'Harmonies vocales détectées' : (harmony_decision == 'absent' ? 'Harmonies vocales non détectées' : null),'key':null},
-                        {'name':'Chœurs','value': choir_decision == 'detected' or choir_decision == 'present' ? 'Chœurs détectés' : (choir_decision == 'absent' ? 'Chœurs non détectés' : null),'key':'choir'}
-                    ] %}
+                    {# The verifier returns evidence-backed verdicts on final LAB assertions only. #}
+                    {% set verification = revision.comparison.final_verification ?? {} %}
+                    {% set verified_rows = verification.assertions ?? [] %}
                     <h3>Résultats musicaux PROFILE</h3>
-                    <p class="meta">Uniquement des valeurs musicales identifiables. « — » signifie qu’aucune valeur n’est établie. Les états, scores et diagnostics demeurent dans les JSON privés.</p>
+                    <p class="meta">Résultats LAB et vérifications indépendantes. Aucun détail de moteur scientifique n’est affiché ici.</p>
                     <table class="profile-results-simple">
-                        <thead><tr><th style="width:23%">Caractéristique</th><th style="width:29%">LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
+                        <thead><tr><th>Caractéristique</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
-                        {% for musical in musical_rows %}
-                            {% set advisory = musical.key ? (attribute(musical_advisories, musical.key) ?? {}) : {} %}
+                        {% for assertion in verified_rows %}
                             <tr>
-                                <td><strong>{{ musical.name }}</strong></td>
-                                <td>{% if musical.value is not null and musical.value not in ['inconclusive', 'possible', 'unknown', 'not_scored', 'unavailable', 'undetermined'] %}{{ musical.value }}{% else %}<span class="meta">—</span>{% endif %}</td>
+                                <td><strong>{{ assertion.label }}</strong></td>
+                                <td>{{ assertion.value }}</td>
                                 <td>
-                                    {% if musical.key is null %}
-                                        <span class="meta">Non évalué séparément par l’Assistant</span>
-                                    {% elseif advisory.status ?? '' == 'abstain' %}
-                                        <span class="meta">Avis non concluant</span>
-                                    {% elseif advisory.advisory ?? '' %}
-                                        {{ advisory.advisory }}
-                                    {% else %}
-                                        <span class="meta">Avis non disponible</span>
+                                    {% set verdict = assertion.verdict ?? 'non_trouve' %}
+                                    <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'FAUX' : 'NON TROUVÉ') }}</strong>
+                                    {% if verdict in ['bon','faux'] and assertion.confidence_pct is defined and assertion.confidence_pct is not null %}
+                                        · {{ assertion.confidence_pct|number_format(0) }} %
+                                    {% endif %}
+                                    {% if verdict in ['bon','faux'] %}
+                                        {% for source in assertion.sources ?? [] %}
+                                            {% if source.url is defined and source.url starts with 'https://' %}
+                                                · <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title ?? 'Source' }}</a>
+                                            {% endif %}
+                                        {% endfor %}
                                     {% endif %}
                                 </td>
                             </tr>
+                        {% else %}
+                            <tr><td colspan="3" class="meta">Aucune vérification indépendante enregistrée dans cette révision.</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
