@@ -658,10 +658,10 @@ SQL;
 
     private function isDistributedAnalysisJob(array $job): bool
     {
-        // Assistant jobs are exclusively consumed by the dedicated Qwen worker.
-        // Never expose them to Orchestrator's scientific queue or claim.
+        // PROFILE review jobs belong to the canonical Orchestrator queue.
+        // The historical XPS polling worker must remain disabled.
         if ((string)($job['kind'] ?? '') === 'assistant.profile.review') {
-            return getenv('EZS_PROFILE_ORCHESTRATOR_DISPATCH') !== '1';
+            return false;
         }
 
         $request = json_decode((string)($job['request_json'] ?? ''), true);
