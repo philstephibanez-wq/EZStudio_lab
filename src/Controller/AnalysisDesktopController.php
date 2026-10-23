@@ -51,6 +51,14 @@ final class AnalysisDesktopController extends AbstractController
         ]);
     }
 
+    #[Route('/profile/reviews/latest', name: 'lab_internal_profile_review_latest', methods: ['GET'])]
+    public function latestProfileReview(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        return $this->json(['ok'=>true,
+            'item'=>$this->profileExternalReview->latestReviewForDisplay()]);
+    }
+
     #[Route('/profile/reviews/run/{id<\d+>}', name: 'lab_internal_profile_review_run', methods: ['GET'])]
     public function profileReviewRun(Request $request, int $id): JsonResponse
     {
