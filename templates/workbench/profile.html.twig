@@ -189,15 +189,15 @@
                                 <td>{{ lab_row.value ?? '—' }}</td>
                                 <td>
                                     {% if lab_row.value is null %}
-                                        <span class="meta">Aucune valeur LAB à comparer — investigation documentaire requise</span>
+                                        <span class="meta">INCONNU — aucune valeur LAB à comparer</span>
                                     {% elseif (web_item.status ?? '') == 'error' %}
                                         <strong>ERREUR TECHNIQUE</strong>
                                         <p class="meta">{{ web_item.reason ?? 'Recherche Internet impossible' }}</p>
                                     {% elseif verdict_row is empty %}
-                                        <span class="meta">Vérification non effectuée</span>
+                                        <span class="meta">INCONNU — vérification non effectuée</span>
                                     {% else %}
                                         {% set verdict = verdict_row.verdict ?? 'non_trouve' %}
-                                        <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'FAUX' : 'NON TROUVÉ') }}</strong>
+                                        <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'MAUVAIS' : 'INCONNU') }}</strong>
                                         {% if verdict in ['bon','faux'] and verdict_row.confidence_pct is defined and verdict_row.confidence_pct is not null %}
                                             · {{ verdict_row.confidence_pct|number_format(0) }} %
                                         {% endif %}
