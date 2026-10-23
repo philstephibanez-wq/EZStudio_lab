@@ -300,11 +300,17 @@ SQL;
         $row = $this->db->pdo()->query($sql)->fetch(\PDO::FETCH_ASSOC);
         if (!$row) return null;
         $result = $this->hydrate($row);
-        $item = $this->reviewItemForRun((int)$row['run_id']);
+        // Display reads only declared identity; never deserialize scientific payloads.
+        $identity = $this->db->pdo()->prepare(
+            'SELECT s.title, s.artist FROM scientific_runs sr '
+            . 'JOIN songs s ON s.id=sr.song_id WHERE sr.id=? LIMIT 1'
+        );
+        $identity->execute([(int)$row['run_id']]);
+        $song = $identity->fetch(\PDO::FETCH_ASSOC) ?: [];
         return ['run_id'=>(int)$row['run_id'], 'revision'=>$result,
                 'identity_declared'=>[
-                    'title'=>(string)($item['title'] ?? ''),
-                    'artist'=>(string)($item['artist'] ?? '')
+                    'title'=>(string)($song['title'] ?? ''),
+                    'artist'=>(string)($song['artist'] ?? '')
                 ]];
     }
 
