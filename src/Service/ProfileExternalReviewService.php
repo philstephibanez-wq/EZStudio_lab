@@ -365,40 +365,69 @@ SQL;
         ];
     }
 
-    /** Strict business payload for the existing orchestration job, never diagnostics. */
+    /** Public assertions only, derived from the finished scientific run itself. */
     public function assertionsForRun(int $runId): array
     {
-        $display = $this->latestReviewForDisplay($runId);
-        if ($display === null) {
-            throw new \RuntimeException('profile_review_source_not_available');
+        $stmt = $this->db->pdo()->prepare(<<<'SQL'
+SELECT sr.id,sr.config_json,sr.metrics_json,s.title,s.artist
+FROM scientific_runs sr JOIN songs s ON s.id=sr.song_id
+WHERE sr.id=? AND sr.item='profile' AND sr.state='done'
+LIMIT 1
+SQL);
+        $stmt->execute([$runId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            throw new \RuntimeException('profile_scientific_run_not_ready');
         }
-        $keys = [
-            'duration'=>'duree', 'tempo'=>'tempo', 'meter'=>'mesure',
-            'key'=>'tonalite', 'genre'=>'genre', 'instrument:0'=>'instruments',
-            'lead_vocal'=>'voix_principale', 'backing_vocals'=>'voix_accompagnement',
-            'vocal_harmonies'=>'harmonies_vocales', 'choir'=>'choeurs',
-        ];
-        $items = array_fill_keys(array_values($keys), null);
-        foreach ($display['items'] as $item) {
-            if (isset($keys[$item['key']])) {
-                $items[$keys[$item['key']]] = $item['lab_value'];
-            }
-        }
-        $identity = $display['identity_declared'];
-        $title = trim((string)($identity['title'] ?? ''));
-        $artist = trim((string)($identity['artist'] ?? ''));
+        $title = trim((string)$row['title']);
+        $artist = trim((string)$row['artist']);
         if ($title === '' || $artist === '') {
             throw new \RuntimeException('profile_identity_requires_manual_resolution');
         }
+        $metrics = $this->decodeObject((string)$row['metrics_json']);
+        $config = $this->decodeObject((string)$row['config_json']);
+        // No diagnostics, engine parameters, checkpoints, paths or stems cross this boundary.
+        $paths = [
+            'duree'=>['duration_seconds','duration_s','duration'],
+            'tempo'=>['tempo_bpm','bpm','tempo'],
+            'mesure'=>['time_signature','meter'],
+            'tonalite'=>['key','tonality'],
+            'genre'=>['genre','primary_genre'],
+            'instruments'=>['instruments','instrumentation'],
+            'voix_principale'=>['lead_vocal'],
+            'voix_accompagnement'=>['backing_vocals'],
+            'harmonies_vocales'=>['vocal_harmonies'],
+            'choeurs'=>['choir'],
+        ];
+        $items = [];
+        foreach ($paths as $item => $candidates) {
+            $value = null;
+            foreach ($candidates as $candidate) {
+                if (array_key_exists($candidate, $metrics)) {
+                    $raw = $metrics[$candidate];
+                    if (is_scalar($raw) && !is_bool($raw) && trim((string)$raw) !== '') {
+                        $value = $raw;
+                    } elseif (is_array($raw) && array_is_list($raw)) {
+                        $filtered = array_values(array_filter($raw, static fn($v) =>
+                            is_scalar($v) && !is_bool($v) && trim((string)$v) !== ''
+                        ));
+                        $value = $filtered === [] ? null : $filtered;
+                    }
+                    if ($value !== null) break;
+                }
+            }
+            $items[$item] = $value;
+        }
+        $preset = $config['preset_id'] ?? $config['preset_number'] ?? null;
+        if (!is_string($preset) && !is_int($preset)) $preset = null;
         return [
-            'expertise_type'=>'profile',
-            'analysis_id'=>$runId,
-            'preset_id'=>$display['preset_reference'],
-            'title'=>$title, 'artist'=>$artist, 'items'=>$items,
+            'expertise_type'=>'profile', 'analysis_id'=>$runId,
+            'preset_id'=>$preset, 'title'=>$title, 'artist'=>$artist,
+            'items'=>$items,
         ];
     }
 
-    public function revisionsForRun(int $runId): array
+        public function revisionsForRun(int $runId): array
     {
         $this->ensureSchema();
         $stmt = $this->db->pdo()->prepare(
