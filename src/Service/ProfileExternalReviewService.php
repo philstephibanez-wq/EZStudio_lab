@@ -288,6 +288,26 @@ SQL);
         return $this->hydrate($row);
     }
 
+    public function latestReviewForDisplay(): ?array
+    {
+        $this->ensureSchema();
+        $sql = <<<'SQL'
+SELECT r.* FROM profile_external_revisions r
+JOIN scientific_runs sr ON sr.id = r.run_id
+WHERE sr.item = 'profile' AND sr.state = 'done'
+ORDER BY r.id DESC LIMIT 1
+SQL;
+        $row = $this->db->pdo()->query($sql)->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        $result = $this->hydrate($row);
+        $item = $this->reviewItemForRun((int)$row['run_id']);
+        return ['run_id'=>(int)$row['run_id'], 'revision'=>$result,
+                'identity_declared'=>[
+                    'title'=>(string)($item['title'] ?? ''),
+                    'artist'=>(string)($item['artist'] ?? '')
+                ]];
+    }
+
     public function revisionsForRun(int $runId): array
     {
         $this->ensureSchema();
