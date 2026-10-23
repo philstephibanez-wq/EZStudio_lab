@@ -347,6 +347,8 @@ SQL;
                 'external_value'=>$review['reference_value'] ?? $assertion['reference_value'] ?? null,
                 'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'MAUVAIS' : 'INCONNU'),
                 'reason'=>$assertion['reason'] ?? $review['explanation'] ?? null,
+                'proposed_verdict'=>$assertion['proposed_verdict'] ?? null,
+                'references'=>$assertion['references'] ?? [],
                 'sources'=>array_values(array_unique(array_filter(
                     $assertion['citations'] ?? $review['citations'] ?? [],
                     static fn($url) => is_string($url) && str_starts_with($url, 'https://')
