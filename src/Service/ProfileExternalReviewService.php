@@ -288,7 +288,7 @@ SQL);
         return $this->hydrate($row);
     }
 
-    public function latestReviewForDisplay(): ?array
+    public function latestReviewForDisplay(?int $runId = null): ?array
     {
         $this->ensureSchema();
         $sql = <<<'SQL'
@@ -297,9 +297,12 @@ FROM profile_external_revisions r
 JOIN scientific_runs sr ON sr.id = r.run_id
 JOIN songs s ON s.id = sr.song_id
 WHERE sr.item = 'profile' AND sr.state = 'done'
+  AND (? IS NULL OR r.run_id = ?)
 ORDER BY r.id DESC LIMIT 1
 SQL;
-        $row = $this->db->pdo()->query($sql)->fetch(\PDO::FETCH_ASSOC);
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute([$runId, $runId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         if (!$row) return null;
         $revision = $this->hydrate($row);
         $configuration = $this->decodeObject((string)$row['config_json']);

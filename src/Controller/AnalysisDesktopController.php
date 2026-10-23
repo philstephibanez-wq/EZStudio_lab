@@ -55,8 +55,17 @@ final class AnalysisDesktopController extends AbstractController
     public function latestProfileReview(Request $request): JsonResponse
     {
         $this->guard->assertAuthorized($request);
+        $rawRunId = $request->query->get('run_id');
+        $runId = null;
+        if ($rawRunId !== null) {
+            $runId = filter_var($rawRunId, FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1]]);
+            if ($runId === false) {
+                return $this->json(['error' => 'run_id_invalid'], 422);
+            }
+        }
         return $this->json(['ok'=>true,
-            'item'=>$this->profileExternalReview->latestReviewForDisplay()]);
+            'item'=>$this->profileExternalReview->latestReviewForDisplay($runId)]);
     }
 
     #[Route('/profile/reviews/run/{id<\d+>}', name: 'lab_internal_profile_review_run', methods: ['GET'])]
