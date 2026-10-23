@@ -292,26 +292,74 @@ SQL);
     {
         $this->ensureSchema();
         $sql = <<<'SQL'
-SELECT r.* FROM profile_external_revisions r
+SELECT r.*, sr.public_id, sr.config_json, s.title, s.artist
+FROM profile_external_revisions r
 JOIN scientific_runs sr ON sr.id = r.run_id
+JOIN songs s ON s.id = sr.song_id
 WHERE sr.item = 'profile' AND sr.state = 'done'
 ORDER BY r.id DESC LIMIT 1
 SQL;
         $row = $this->db->pdo()->query($sql)->fetch(\PDO::FETCH_ASSOC);
         if (!$row) return null;
-        $result = $this->hydrate($row);
-        // Display reads only declared identity; never deserialize scientific payloads.
-        $identity = $this->db->pdo()->prepare(
-            'SELECT s.title, s.artist FROM scientific_runs sr '
-            . 'JOIN songs s ON s.id=sr.song_id WHERE sr.id=? LIMIT 1'
-        );
-        $identity->execute([(int)$row['run_id']]);
-        $song = $identity->fetch(\PDO::FETCH_ASSOC) ?: [];
-        return ['run_id'=>(int)$row['run_id'], 'revision'=>$result,
-                'identity_declared'=>[
-                    'title'=>(string)($song['title'] ?? ''),
-                    'artist'=>(string)($song['artist'] ?? '')
-                ]];
+        $revision = $this->hydrate($row);
+        $configuration = $this->decodeObject((string)$row['config_json']);
+        // Preset reference only; omit scientific configuration from the response.
+        $preset = $configuration['preset_id'] ?? $configuration['preset_number'] ?? null;
+        if (!is_scalar($preset) || trim((string)$preset) === '') {
+            $preset = null;
+        }
+        $verification = $revision['comparison']['final_verification'] ?? [];
+        $assertions = $verification['assertions'] ?? [];
+        $byKey = [];
+        foreach ($assertions as $assertion) {
+            if (is_array($assertion) && isset($assertion['key'])) {
+                $byKey[(string)$assertion['key']] = $assertion;
+            }
+        }
+        $investigations = $verification['web_investigation']['items'] ?? [];
+        $values = [];
+        foreach ($investigations as $item) {
+            if (is_array($item) && isset($item['key'])) $values[(string)$item['key']] = $item;
+        }
+        $reviews = $verification['local_web_review']['items'] ?? [];
+        $ai = [];
+        foreach ($reviews as $item) {
+            if (is_array($item) && isset($item['key'])) $ai[(string)$item['key']] = $item;
+        }
+        $keys = [
+            'duration'=>'Durée', 'tempo'=>'Tempo', 'meter'=>'Mesure',
+            'key'=>'Tonalité', 'genre'=>'Genre', 'instrument:0'=>'Instruments',
+            'lead_vocal'=>'Voix principale', 'backing_vocals'=>'Voix d’accompagnement',
+            'vocal_harmonies'=>'Harmonies vocales', 'choir'=>'Chœurs',
+        ];
+        $items = [];
+        foreach ($keys as $key => $label) {
+            $assertion = $byKey[$key] ?? [];
+            $review = $ai[$key] ?? [];
+            $candidate = $values[$key] ?? [];
+            $verdict = strtolower((string)($assertion['verdict'] ?? 'non_trouve'));
+            $items[] = [
+                'key'=>$key, 'label'=>$label,
+                'lab_value'=>$candidate['value'] ?? $assertion['value'] ?? null,
+                'external_value'=>$review['reference_value'] ?? $assertion['reference_value'] ?? null,
+                'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'MAUVAIS' : 'INCONNU'),
+                'reason'=>$assertion['reason'] ?? $review['explanation'] ?? null,
+                'sources'=>array_values(array_unique(array_filter(
+                    $assertion['citations'] ?? $review['citations'] ?? [],
+                    static fn($url) => is_string($url) && str_starts_with($url, 'https://')
+                ))),
+            ];
+        }
+        return [
+            'run_id'=>(int)$row['run_id'],
+            'analysis_reference'=>(string)$row['public_id'],
+            'preset_reference'=>$preset === null ? null : (string)$preset,
+            'review_id'=>$revision['id'],
+            'review_status'=>$revision['status'],
+            'identity_declared'=>['title'=>(string)$row['title'], 'artist'=>(string)$row['artist']],
+            'identity_confirmed'=>false,
+            'items'=>$items,
+        ];
     }
 
     public function revisionsForRun(int $runId): array
