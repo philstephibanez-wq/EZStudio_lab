@@ -661,7 +661,7 @@ SQL;
         // Assistant jobs are exclusively consumed by the dedicated Qwen worker.
         // Never expose them to Orchestrator's scientific queue or claim.
         if ((string)($job['kind'] ?? '') === 'assistant.profile.review') {
-            return true;
+            return getenv('EZS_PROFILE_ORCHESTRATOR_DISPATCH') !== '1';
         }
 
         $request = json_decode((string)($job['request_json'] ?? ''), true);
@@ -813,6 +813,10 @@ SQL;
         $request = json_decode((string)$job['request_json'], true);
         if (!is_array($request)) {
             throw new \RuntimeException('invalid_job_request');
+        }
+
+        if ((string)$job['kind'] === 'assistant.profile.review') {
+            $request['expertise_payload'] = (new ProfileExternalReviewService($this))->assertionsForRun((int)$job['scientific_run_id']);
         }
 
         $tmpRoot = rtrim(

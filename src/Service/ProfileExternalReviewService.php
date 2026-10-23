@@ -365,6 +365,39 @@ SQL;
         ];
     }
 
+    /** Strict business payload for the existing orchestration job, never diagnostics. */
+    public function assertionsForRun(int $runId): array
+    {
+        $display = $this->latestReviewForDisplay($runId);
+        if ($display === null) {
+            throw new \\RuntimeException('profile_review_source_not_available');
+        }
+        $keys = [
+            'duration'=>'duree', 'tempo'=>'tempo', 'meter'=>'mesure',
+            'key'=>'tonalite', 'genre'=>'genre', 'instrument:0'=>'instruments',
+            'lead_vocal'=>'voix_principale', 'backing_vocals'=>'voix_accompagnement',
+            'vocal_harmonies'=>'harmonies_vocales', 'choir'=>'choeurs',
+        ];
+        $items = array_fill_keys(array_values($keys), null);
+        foreach ($display['items'] as $item) {
+            if (isset($keys[$item['key']])) {
+                $items[$keys[$item['key']]] = $item['lab_value'];
+            }
+        }
+        $identity = $display['identity_declared'];
+        $title = trim((string)($identity['title'] ?? ''));
+        $artist = trim((string)($identity['artist'] ?? ''));
+        if ($title === '' || $artist === '') {
+            throw new \\RuntimeException('profile_identity_requires_manual_resolution');
+        }
+        return [
+            'expertise_type'=>'profile',
+            'analysis_id'=>$runId,
+            'preset_id'=>$display['preset_reference'],
+            'title'=>$title, 'artist'=>$artist, 'items'=>$items,
+        ];
+    }
+
     public function revisionsForRun(int $runId): array
     {
         $this->ensureSchema();
