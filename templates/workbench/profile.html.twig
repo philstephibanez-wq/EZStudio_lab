@@ -155,6 +155,7 @@
                         {'key':'vocal_harmonies','label':'Harmonies vocales','value':(voice_music.vocal_harmonies.decision ?? '') in ['present','detected'] ? 'Présentes' : ((voice_music.vocal_harmonies.decision ?? '') == 'absent' ? 'Absentes' : null)},
                         {'key':'choir','label':'Chœurs','value':(voice_music.choir.decision ?? pv_music.choirs.decision ?? '') in ['present','detected'] ? 'Présents' : ((voice_music.choir.decision ?? pv_music.choirs.decision ?? '') == 'absent' ? 'Absents' : null)}
                     ]) %}
+                    <p class="meta">Analyse #{{ selected_profile_run.public_id ?? selected_profile_run.id }} · Preset #{{ selected_profile_run.config.preset_id ?? selected_profile_run.config.preset_number ?? 'non renseigné' }} · Interprète et titre déclarés (à confirmer)</p>
                     <h3>Résultats musicaux PROFILE</h3>
                     <p class="meta">Chaque proposition musicale LAB est vérifiée séparément. BON ou FAUX exigent une source indépendante du même enregistrement ; sinon NON TROUVÉ. Aucun pourcentage non calibré.</p>
                     {% if web_investigation is not empty and (web_investigation.status ?? '') != 'completed' %}
