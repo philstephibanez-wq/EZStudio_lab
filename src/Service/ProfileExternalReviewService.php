@@ -381,8 +381,8 @@ SQL);
         }
         $title = trim((string)$row['title']);
         $artist = trim((string)$row['artist']);
-        if ($title === '' || $artist === '') {
-            throw new \RuntimeException('profile_identity_requires_manual_resolution');
+        if ($title === '') {
+            throw new \RuntimeException('profile_title_required');
         }
         $metrics = $this->decodeObject((string)$row['metrics_json']);
         $config = $this->decodeObject((string)$row['config_json']);
@@ -422,7 +422,7 @@ SQL);
         if (!is_string($preset) && !is_int($preset)) $preset = null;
         return [
             'expertise_type'=>'profile', 'analysis_id'=>$runId,
-            'preset_id'=>$preset, 'title'=>$title, 'artist'=>$artist,
+            'preset_id'=>$preset, 'title'=>$title, 'artist'=>$artist === '' ? null : $artist,
             'items'=>$items,
         ];
     }
