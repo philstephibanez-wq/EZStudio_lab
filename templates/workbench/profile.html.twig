@@ -187,7 +187,10 @@
                                 <td>{{ lab_row.value ?? '—' }}</td>
                                 <td>
                                     {% if lab_row.value is null %}
-                                        <span class="meta">Aucune valeur LAB à vérifier</span>
+                                        <span class="meta">Aucune valeur LAB à comparer — investigation documentaire requise</span>
+                                    {% elseif (web_item.status ?? '') == 'error' %}
+                                        <strong>ERREUR TECHNIQUE</strong>
+                                        <p class="meta">{{ web_item.reason ?? 'Recherche Internet impossible' }}</p>
                                     {% elseif verdict_row is empty %}
                                         <span class="meta">Vérification non effectuée</span>
                                     {% else %}
