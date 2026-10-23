@@ -370,7 +370,7 @@ SQL;
     {
         $display = $this->latestReviewForDisplay($runId);
         if ($display === null) {
-            throw new \\RuntimeException('profile_review_source_not_available');
+            throw new \RuntimeException('profile_review_source_not_available');
         }
         $keys = [
             'duration'=>'duree', 'tempo'=>'tempo', 'meter'=>'mesure',
@@ -388,7 +388,7 @@ SQL;
         $title = trim((string)($identity['title'] ?? ''));
         $artist = trim((string)($identity['artist'] ?? ''));
         if ($title === '' || $artist === '') {
-            throw new \\RuntimeException('profile_identity_requires_manual_resolution');
+            throw new \RuntimeException('profile_identity_requires_manual_resolution');
         }
         return [
             'expertise_type'=>'profile',
