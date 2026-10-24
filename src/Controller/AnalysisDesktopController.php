@@ -30,6 +30,24 @@ final class AnalysisDesktopController extends AbstractController
         private readonly StemsExecutionService $stemsExecution,
     ) {}
 
+    #[Route('/profile/completed-metadata', name: 'lab_internal_profile_completed_metadata', methods: ['GET'])]
+    public function completedProfileMetadata(Request $request): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $limit = filter_var($request->query->get('limit', 500), FILTER_VALIDATE_INT,
+            ['options'=>['min_range'=>1,'max_range'=>500]]);
+        if ($limit === false) {
+            return $this->json(['error'=>'limit_must_be_1_500'], 422);
+        }
+        $rows = $this->profileExternalReview->completedProfileMetadata((int)$limit);
+        return $this->json([
+            'schema'=>'ezstudio.profile-completed-metadata.v1',
+            'scope'=>'latest_completed_profile_runs',
+            'count'=>count($rows),
+            'items'=>$rows,
+        ]);
+    }
+
     #[Route('/profile/reviews/queue', name: 'lab_internal_profile_review_queue', methods: ['GET'])]
     public function profileReviewQueue(Request $request): JsonResponse
     {
