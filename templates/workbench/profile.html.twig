@@ -127,6 +127,58 @@
                             Comparaison externe indiquée : examiner les références avant validation.
                         </p>
                     {% endif %}
+                    {# Consultative documentary catalogue metadata: never an authoritative LAB edit. #}
+                    {% set documentary = revision.comparison.documentary_catalogue_suggestions ?? {} %}
+                    {% if documentary is not empty %}
+                        <section class="profile-documentary-suggestions">
+                            <h3>Identité musicale et crédits proposés par l’Assistant</h3>
+                            <p class="meta">Données documentaires consultatives. À confirmer avant toute modification du catalogue.</p>
+                            {% set document_title = documentary.work.full_title ?? {} %}
+                            <p><strong>Titre complet :</strong> {{ document_title.value ?? 'Non documenté' }}
+                                <span class="meta">({{ document_title.status ?? 'inconnu' }})</span></p>
+                            {% set document_performers = documentary.recording.performers ?? [] %}
+                            <p><strong>Interprète(s) :</strong>
+                                {% if document_performers is empty %}Non documenté{% else %}
+                                    {% for person in document_performers %}
+                                        {{ person.value ?? 'Non documenté' }} ({{ person.status ?? 'inconnu' }}){{ not loop.last ? ', ' : '' }}
+                                    {% endfor %}
+                                {% endif %}
+                            </p>
+                            {% for group in [
+                                {'label':'Paroliers / auteurs','values': documentary.work.lyricists ?? []},
+                                {'label':'Compositeurs','values': documentary.work.composers ?? []},
+                                {'label':'Arrangeurs','values': documentary.recording.arrangers ?? []}
+                            ] %}
+                                <p><strong>{{ group.label }} :</strong>
+                                {% if group.values is empty %}Non documenté{% else %}
+                                    {% for person in group.values %}
+                                        {{ person.value ?? 'Non documenté' }} ({{ person.status ?? 'inconnu' }}){{ not loop.last ? ', ' : '' }}
+                                    {% endfor %}
+                                {% endif %}
+                                </p>
+                            {% endfor %}
+                            {% set musician_credits = documentary.recording.musician_credits ?? [] %}
+                            {% if musician_credits is not empty %}
+                                <p><strong>Musiciens crédités pour l’enregistrement :</strong></p>
+                                <ul>
+                                {% for credit in musician_credits %}
+                                    <li>{{ credit.name }} — {{ credit.role }} ({{ credit.status ?? 'candidat' }})</li>
+                                {% endfor %}
+                                </ul>
+                            {% endif %}
+                            {% set source_links = documentary.consulted_identity_sources ?? [] %}
+                            {% if source_links is not empty %}
+                                <p><strong>Références consultées :</strong></p>
+                                <ul>
+                                    {% for url in source_links %}
+                                        {% if url starts with 'https://' %}
+                                            <li><a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a></li>
+                                        {% endif %}
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+                        </section>
+                    {% endif %}
                     {# LAB values are ALWAYS rendered; verification may be absent on historical revisions. #}
                     {% set pv_music = selected_profile_run.diagnostics.profile_view ?? {} %}
                     {% set voice_music = pv_music.vocal_profile.dimensions ?? {} %}
