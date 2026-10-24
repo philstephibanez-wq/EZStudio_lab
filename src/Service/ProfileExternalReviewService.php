@@ -35,47 +35,6 @@ ON profile_external_revisions(run_id,status,updated_at);
 SQL);
     }
 
-    /** Minimal read-only census, independent of review status; no raw diagnostics. */
-    public function completedProfileMetadata(int $limit = 500): array
-    {
-        $effectiveLimit = max(1, min(500, $limit));
-        $stmt = $this->db->pdo()->prepare(<<<'SQL'
-SELECT sr.id AS run_id, sr.song_id, sr.public_id, sr.metrics_json,
-       s.title, s.artist, sr.finished_at
-FROM scientific_runs sr
-JOIN songs s ON s.id=sr.song_id
-WHERE sr.item='profile' AND sr.state='done'
-ORDER BY sr.id DESC
-LIMIT ?
-SQL);
-        $stmt->bindValue(1, $effectiveLimit, \\PDO::PARAM_INT);
-        $stmt->execute();
-        $rows = [];
-        foreach ($stmt->fetchAll(\\PDO::FETCH_ASSOC) as $row) {
-            $metrics = $this->decodeObject((string)$row['metrics_json']);
-            $duration = null;
-            foreach (['duration_seconds', 'duration_s', 'duration'] as $key) {
-                $value = $metrics[$key] ?? null;
-                if ((is_string($value) || is_int($value) || is_float($value))
-                    && trim((string)$value) !== '') {
-                    $duration = $value;
-                    break;
-                }
-            }
-            $rows[] = [
-                'run_id'=>(int)$row['run_id'],
-                'song_id'=>(int)$row['song_id'],
-                'public_id'=>(string)$row['public_id'],
-                'state'=>'done',
-                'title'=>(string)$row['title'],
-                'artist'=>(string)$row['artist'],
-                'metrics'=>['duration_seconds'=>$duration],
-                'finished_at'=>$row['finished_at'],
-            ];
-        }
-        return $rows;
-    }
-
     public function queue(int $limit = 100): array
     {
         $this->ensureSchema();
