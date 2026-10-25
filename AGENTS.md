@@ -11,9 +11,9 @@
 
 ## PRÉFIXE DE COMMIT ET CONFORMITÉ DE LIVRAISON — OBLIGATOIRE
 
-- Tout **nouveau** message de commit commence exactement par `[v] `, suivi de `type(périmètre): résultat obtenu — VERSION`, en français. Exemple : `[v] fix(profile): préserver les preuves MusicBrainz — 1.3l`.
+- Tout nouveau commit doit commencer par le numéro exact contenu dans `VERSION`, entre crochets, suivi du type, périmètre et résultat en français. Exemple : `[v1.4a(18)] fix(profile): corriger les preuves documentaires`.
 - Corps de message multiligne : `Contexte`, `Modifications`, `Validation`, `Impact`, et `Limites / risques` si nécessaire.
-- Un changement livré comprend le code durable, ses tests et l'incrément de `VERSION` dans **un commit cohérent**, sauf impossibilité technique explicitée avant écriture. Ne jamais créer une succession de commits incomplets en prétendant que chacun satisfait au contrat.
+- Chaque commit réunit son changement durable, les tests pertinents, l'incrément de `VERSION` et les notes de livraison ou handoff associés. Ne pas fractionner une livraison en commits de rattrapage.
 - Avant toute publication : confirmer fichiers concernés, absence de fichiers temporaires, version, préfixe, messages, vérifications statiques et tests pertinents. Aucun historique partagé n'est réécrit de force.
 - Un test CI qui échoue ne bloque pas à lui seul un push direct tant qu'une protection de branche n'impose pas le statut. Ne jamais annoncer un blocage effectif avant sa configuration et sa vérification.
 
@@ -65,7 +65,7 @@ Règles :
 
 Chaque commit publié doit être intelligible sans ouvrir le diff. Rédiger **en français**, avec :
 
-- Un titre précis au format `[v] type(périmètre): résultat obtenu — version` (par exemple `fix(profile): rejeter les preuves CLAP non indépendantes — 1.4n`). Types usuels : `fix`, `feat`, `refactor`, `test`, `docs`, `chore`.
+- Format obligatoire du titre : `[vVERSION] type(périmètre): résultat concret`, avec la version identique à `VERSION` dans le même commit ; par exemple `[v1.4a(18)] fix(profile): écarter les comparaisons documentaires invalides`.
 - Un **corps de message multiligne** expliquant `Contexte`, `Modifications`, `Validation`, `Impact` et, si nécessaire, `Limites / risques`.
 - Dans `Validation`, distinguer explicitement les tests exécutés des tests seulement ajoutés ou non exécutés. Ne jamais affirmer une réussite non constatée.
 - Dans `Impact`, indiquer les dépôts ou composants touchés, les éventuels redémarrages/déploiements, et si les modèles, presets scientifiques, données et interfaces sont inchangés.
