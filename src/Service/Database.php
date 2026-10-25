@@ -683,6 +683,7 @@ SQL;
              FROM analysis_jobs j
              JOIN songs s ON s.id=j.song_id
              WHERE j.status='queued'
+               AND j.kind <> 'assistant.profile.review'
              ORDER BY j.created_at ASC,j.id ASC"
         );
 
@@ -747,6 +748,7 @@ SQL;
             $candidates = $pdo->query(
                 "SELECT * FROM analysis_jobs j
                  WHERE j.status='queued'
+                   AND j.kind <> 'assistant.profile.review'
                    AND NOT EXISTS (
                        SELECT 1
                        FROM analysis_resource_locks l
