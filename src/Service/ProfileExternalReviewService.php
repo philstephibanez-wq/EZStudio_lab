@@ -348,6 +348,7 @@ SQL;
                 'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'MAUVAIS' : 'INCONNU'),
                 'reason'=>$assertion['reason'] ?? $review['explanation'] ?? null,
                 'proposed_verdict'=>$assertion['proposed_verdict'] ?? null,
+                'documentary_observation'=>$assertion['documentary_observation'] ?? null,
                 'references'=>$assertion['references'] ?? [],
                 'sources'=>array_values(array_unique(array_filter(
                     $assertion['citations'] ?? $review['citations'] ?? [],
