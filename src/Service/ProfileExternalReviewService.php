@@ -363,7 +363,70 @@ SQL;
             'review_status'=>$revision['status'],
             'identity_declared'=>['title'=>(string)$row['title'], 'artist'=>(string)$row['artist']],
             'identity_confirmed'=>false,
+            'documentary_catalogue_suggestions'=>$this->documentaryDisplayProjection(
+                $revision['comparison']['documentary_catalogue_suggestions'] ?? null
+            ),
             'items'=>$items,
+        ];
+    }
+
+    /** A strict, bounded advisory projection for the Assistant dashboard. */
+    private function documentaryDisplayProjection(mixed $input): ?array
+    {
+        if (!is_array($input) || ($input['schema'] ?? '') !==
+            'ezstudio.assistant.catalogue-suggestions.v1') {
+            return null;
+        }
+        $source = static function (mixed $value): array {
+            if (!is_array($value)) return [];
+            $out = [];
+            foreach (array_slice($value, 0, 12) as $url) {
+                if (!is_string($url) || strlen($url) > 600 ||
+                    !str_starts_with($url, 'https://')) continue;
+                $parsed = parse_url($url);
+                if (!is_array($parsed) || empty($parsed['host']) ||
+                    isset($parsed['user']) || isset($parsed['pass'])) continue;
+                $out[] = $url;
+            }
+            return array_values(array_unique($out));
+        };
+        $field = static function (mixed $item) use ($source): ?array {
+            if (!is_array($item)) return null;
+            $value = $item['value'] ?? null;
+            if (!is_string($value) || trim($value) === '') return null;
+            $status = $item['status'] ?? 'candidate';
+            if (!in_array($status, ['candidate','corroborated','unknown'], true)) {
+                $status = 'candidate';
+            }
+            return ['value'=>mb_substr(trim($value), 0, 180),
+                    'status'=>$status, 'sources'=>$source($item['sources'] ?? [])];
+        };
+        $people = static function (mixed $items) use ($field): array {
+            if (!is_array($items)) return [];
+            $result = [];
+            foreach (array_slice($items, 0, 30) as $item) {
+                $entry = $field($item);
+                if ($entry !== null) $result[] = $entry;
+            }
+            return $result;
+        };
+        $work = is_array($input['work'] ?? null) ? $input['work'] : [];
+        $recording = is_array($input['recording'] ?? null) ? $input['recording'] : [];
+        return [
+            'schema'=>'ezstudio.assistant.catalogue-suggestions.v1',
+            'advisory_only'=>true,
+            'identity_verified'=>false,
+            'recording_identity_verified'=>false,
+            'work'=>[
+                'full_title'=>$field($work['full_title'] ?? null),
+                'lyricists'=>$people($work['lyricists'] ?? []),
+                'composers'=>$people($work['composers'] ?? []),
+            ],
+            'recording'=>[
+                'performers'=>$people($recording['performers'] ?? []),
+                'arrangers'=>$people($recording['arrangers'] ?? []),
+            ],
+            'consulted_identity_sources'=>$source($input['consulted_identity_sources'] ?? []),
         ];
     }
 
