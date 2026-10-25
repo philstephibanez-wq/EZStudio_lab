@@ -254,7 +254,7 @@
                                         <strong>ERREUR TECHNIQUE</strong>
                                         <p class="meta">{{ web_item.reason ?? 'Recherche Internet impossible' }}</p>
                                     {% elseif verdict_row is empty %}
-                                        <span class="meta">INCONNU — vérification non effectuée</span>
+                                        <span class="meta">INCONNU — aucune preuve scientifique validée pour cette valeur</span>
                                     {% else %}
                                         {% set verdict = verdict_row.verdict ?? 'non_trouve' %}
                                         <span class="profile-verdict {{ verdict == 'bon' ? 'profile-verdict--good' : (verdict == 'faux' ? 'profile-verdict--bad' : 'profile-verdict--unknown') }}">{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'MAUVAIS' : 'INCONNU') }}</span>
@@ -286,8 +286,8 @@
                                     {% endif %}
                                     {% if web_item is not empty %}
                                         <details class="profile-web-evidence">
-                                            <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve validée') }}</summary>
-                                            <p class="meta">Pistes documentaires non vérifiées. Ces résultats ne justifient ni BON ni FAUX.</p>
+                                            <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve scientifique validée') }}</summary>
+                                            <p class="meta">Références documentaires consultées, mais non admissibles à elles seules comme preuve scientifique. Elles peuvent étayer une concordance ou une discordance provisoire.</p>
                                             {% set live_evidence = web_item.evidence_review ?? {} %}
                                             {% if live_evidence is not empty %}
                                                 <p><strong>Évaluation des documents lus : {{ (live_evidence.verdict ?? 'non_trouve')|upper }}</strong> — {{ live_evidence.reason ?? '' }}</p>
