@@ -77,6 +77,20 @@ final class AnalysisDesktopController extends AbstractController
         return $this->json(['item'=>$item]);
     }
 
+    #[Route('/profile/reviews/run/{id<\d+>}/final-assertions', name: 'lab_internal_profile_final_assertions', methods: ['GET'])]
+    public function profileFinalAssertions(Request $request, int $id): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        try {
+            $data = $this->profileExternalReview->assertionsForRun($id);
+            return $this->json(['schema'=>'ezstudio.profile-final-assertions.v1',
+                'run_id'=>$id,'count'=>$data['final_assertions_count'],
+                'assertions'=>$data['final_assertions']]);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error'=>$e->getMessage()],409);
+        }
+    }
+
     #[Route('/profile/reviews', name: 'lab_internal_profile_review_submit', methods: ['POST'])]
     public function profileReviewSubmit(Request $request): JsonResponse
     {
