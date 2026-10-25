@@ -2,8 +2,8 @@
 <div class="card" id="profile-ai-request" data-url="{{ path('profile_ai_review_status', {id: selected_profile_run.id}) }}">
   <h2>ASSISTANT · Révision musicale IA</h2>
   <div class="meta">Qwen sur XPS · run #{{ selected_profile_run.id }} · aucune modification du résultat scientifique ou des presets.</div>
-  <form id="profile-ai-request-form" action="{{ path('profile_ai_review_request', {id: selected_profile_run.id}) }}" method="post">
-    <button type="submit" id="profile-ai-run-button">Réviser avec l’IA</button>
+  <form id="profile-ai-request-form" action="{{ path('profile_ai_review_request', {id: selected_profile_run.id}) }}" method="post" onsubmit="return false">
+    <button type="button" id="profile-ai-run-button">Réviser avec l’IA</button>
   </form>
   <div class="profile-ai-progress" aria-label="Progression de la révision IA">
     <progress id="profile-ai-progress" max="100" value="0" style="width:100%;height:16px"></progress>
@@ -55,7 +55,7 @@
      const j=await r.json();show(j.request);
    } catch (e) {state.textContent='Suivi indisponible : '+e.message;progress.removeAttribute('value');currentItem.hidden=true;}
  }
- form.addEventListener('submit',async function(e){
+ button.addEventListener('click',async function(e){
    e.preventDefault();button.disabled=true;state.textContent='Demande en cours…';progress.removeAttribute('value');currentItem.hidden=true;
    try {
       const r=await fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'X-EZS-Profile-AI-Action':'request','Accept':'application/json'}});
