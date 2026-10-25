@@ -368,6 +368,9 @@ SQL;
                 $revision['comparison']['documentary_catalogue_suggestions'] ?? null
             ),
             'items'=>$items,
+            'final_assertions_schema'=>'ezstudio.profile-final-assertions.v1',
+            'final_assertions'=>$assertions,
+            'final_assertions_count'=>count($assertions),
         ];
     }
 
@@ -494,6 +497,36 @@ SQL);
                 }
             }
             $items[$item] = $value;
+        }
+        // Public, typed inventory. Historical "items" remains untouched for existing clients.
+        // This intentionally does NOT enumerate arbitrary metrics or private diagnostics.
+        $assertions = [];
+        $seen = [];
+        $emit = static function (string $id, string $dimension, mixed $value) use (&$assertions, &$seen): void {
+            if (!preg_match('/^[a-z][a-z0-9_.:-]{0,119}$/', $id) || isset($seen[$id])
+                || !is_scalar($value) || is_bool($value) || trim((string)$value) === '') {
+                return;
+            }
+            $seen[$id] = true;
+            $assertions[] = ['id'=>$id,'dimension'=>$dimension,'value'=>$value];
+        };
+        foreach ($items as $dimension=>$value) {
+            if (is_array($value) && array_is_list($value)) {
+                foreach ($value as $index=>$member) {
+                    $emit($dimension.':'.$index, $dimension, $member);
+                }
+            } elseif ($value !== null) {
+                $emit($dimension, $dimension, $value);
+            }
+        }
+        // Future public final outputs: extensible contract with explicit whitelist of
+        // published FINAL assertions, never raw model/module/preset diagnostic data.
+        foreach (($metrics['final_musical_assertions'] ?? []) as $entry) {
+            if (!is_array($entry) || !isset($entry['id'],$entry['dimension'],$entry['value'])
+                || !is_string($entry['id']) || !is_string($entry['dimension'])) {
+                continue;
+            }
+            $emit($entry['id'], $entry['dimension'], $entry['value']);
         }
         $preset = $config['preset_id'] ?? $config['preset_number'] ?? null;
         if (!is_string($preset) && !is_int($preset)) $preset = null;
