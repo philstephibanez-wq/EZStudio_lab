@@ -215,6 +215,14 @@
                     {% elseif web_investigation is empty %}
                         <p class="meta"><strong>Recherche Internet non exécutée</strong> pour cette révision (historique ou worker antérieur).</p>
                     {% endif %}
+                    <style>
+                    .profile-verdict {font-weight:700;display:inline-block;padding:3px 9px;border-radius:5px}
+                    .profile-verdict--good {color:#93edb9;background:#173a2b;border:1px solid #327e58}
+                    .profile-verdict--bad {color:#ffb3b3;background:#46232a;border:1px solid #aa4855}
+                    .profile-verdict--unknown {color:#c8d0db;background:#303842;border:1px solid #657181}
+                    .profile-verdict--match {color:#a0d6ff;background:#1b3852;border:1px solid #467faa}
+                    .profile-verdict--conflict {color:#ffd596;background:#4b321a;border:1px solid #a77a3d}
+                    </style>
                     <table class="profile-results-simple">
                         <thead><tr><th>Caractéristique</th><th>LAB : valeur</th><th>ASSISTANT : résultat</th></tr></thead>
                         <tbody>
@@ -249,7 +257,7 @@
                                         <span class="meta">INCONNU — vérification non effectuée</span>
                                     {% else %}
                                         {% set verdict = verdict_row.verdict ?? 'non_trouve' %}
-                                        <strong>{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'MAUVAIS' : 'INCONNU') }}</strong>
+                                        <span class="profile-verdict {{ verdict == 'bon' ? 'profile-verdict--good' : (verdict == 'faux' ? 'profile-verdict--bad' : 'profile-verdict--unknown') }}">{{ verdict == 'bon' ? 'BON' : (verdict == 'faux' ? 'MAUVAIS' : 'INCONNU') }}</span>
                                         {% if verdict in ['bon','faux'] and verdict_row.confidence_pct is defined and verdict_row.confidence_pct is not null %}
                                             · {{ verdict_row.confidence_pct|number_format(0) }} %
                                         {% endif %}
@@ -264,7 +272,7 @@
                                     {% set observation = verdict_row.documentary_observation ?? {} %}
                                     {% if observation is not empty %}
                                         <div class="profile-documentary-observation">
-                                            <strong>Comparaison documentaire : {{ observation.comparison == 'concordant' ? 'CONCORDANTE' : (observation.comparison == 'discordant' ? 'DISCORDANTE' : 'INDÉTERMINÉE') }}</strong>
+                                            <span class="profile-verdict {{ observation.comparison == 'concordant' ? 'profile-verdict--match' : (observation.comparison == 'discordant' ? 'profile-verdict--conflict' : 'profile-verdict--unknown') }}">Comparaison documentaire : {{ observation.comparison == 'concordant' ? 'CONCORDANTE' : (observation.comparison == 'discordant' ? 'DISCORDANTE' : 'INDÉTERMINÉE') }}</span>
                                             {% if observation.reference_value ?? '' %}
                                                 <p>Valeur documentaire : {{ observation.reference_value }}</p>
                                             {% endif %}
