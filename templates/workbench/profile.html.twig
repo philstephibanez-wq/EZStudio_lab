@@ -261,6 +261,21 @@
                                             {% endfor %}
                                         {% endif %}
                                     {% endif %}
+                                    {% set observation = verdict_row.documentary_observation ?? {} %}
+                                    {% if observation is not empty %}
+                                        <div class="profile-documentary-observation">
+                                            <strong>Comparaison documentaire : {{ observation.comparison == 'concordant' ? 'CONCORDANTE' : (observation.comparison == 'discordant' ? 'DISCORDANTE' : 'INDÉTERMINÉE') }}</strong>
+                                            {% if observation.reference_value ?? '' %}
+                                                <p>Valeur documentaire : {{ observation.reference_value }}</p>
+                                            {% endif %}
+                                            <p class="meta">Enregistrement exact non confirmé · conclusion scientifique inchangée.</p>
+                                            {% for url in observation.citations ?? [] %}
+                                                {% if url starts with 'https://' %}
+                                                    <a href="{{ url }}" target="_blank" rel="noopener noreferrer">Source {{ loop.index }}</a>{{ not loop.last ? ' · ' : '' }}
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
                                     {% if web_item is not empty %}
                                         <details class="profile-web-evidence">
                                             <summary>Recherche Internet — {{ (web_item.status ?? '') == 'discovered' ? 'sources repérées' : ((web_item.status ?? '') == 'error' ? 'erreur' : 'aucune preuve validée') }}</summary>
