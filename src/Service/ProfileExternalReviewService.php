@@ -534,6 +534,9 @@ SQL);
             'expertise_type'=>'profile', 'analysis_id'=>$runId,
             'preset_id'=>$preset, 'title'=>$title, 'artist'=>$artist === '' ? null : $artist,
             'items'=>$items,
+            'final_assertions_schema'=>'ezstudio.profile-final-assertions.v1',
+            'final_assertions'=>$assertions,
+            'final_assertions_count'=>count($assertions),
         ];
     }
 
