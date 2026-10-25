@@ -344,7 +344,7 @@ SQL;
             $items[] = [
                 'key'=>$key, 'label'=>$label,
                 'lab_value'=>$candidate['value'] ?? $assertion['value'] ?? null,
-                'external_value'=>$review['reference_value'] ?? $assertion['reference_value'] ?? null,
+                'external_value'=>in_array($verdict, ['bon','faux'], true) ? ($assertion['reference_value'] ?? null) : null,
                 'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'MAUVAIS' : 'INCONNU'),
                 'reason'=>$assertion['reason'] ?? $review['explanation'] ?? null,
                 'proposed_verdict'=>$assertion['proposed_verdict'] ?? null,
