@@ -425,6 +425,17 @@ SQL;
             'recording'=>[
                 'performers'=>$people($recording['performers'] ?? []),
                 'arrangers'=>$people($recording['arrangers'] ?? []),
+                'musician_credits'=>array_values(array_filter(array_map(
+                    static function ($credit) use ($source) {
+                        if (!is_array($credit) || !is_string($credit['name'] ?? null) ||
+                            !is_string($credit['role'] ?? null)) return null;
+                        return ['name'=>mb_substr(trim($credit['name']), 0, 180),
+                                'role'=>mb_substr(trim($credit['role']), 0, 80),
+                                'status'=>'candidate',
+                                'sources'=>$source([$credit['source'] ?? null])];
+                    }, array_slice(is_array($recording['musician_credits'] ?? null) ?
+                        $recording['musician_credits'] : [], 0, 30)
+                ))),
             ],
             'consulted_identity_sources'=>$source($input['consulted_identity_sources'] ?? []),
         ];
