@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import math
+import os
+import json
+import time
+import sys
 from typing import Any
 
 import numpy as np
@@ -332,11 +336,31 @@ def _consensus_r2d(
     }
 
 
+def _tuning_probe(stage: str, elapsed_s: float) -> None:
+    """Opt-in stage timings; stderr only, no scientific output changes."""
+    if os.getenv("EZSTUDIO_PROFILE_TUNING_PROBE") != "1":
+        return
+    print(
+        "EZSTUDIO_PROFILE_TUNING_PROBE "
+        + json.dumps({"stage": stage, "elapsed_seconds": round(elapsed_s, 6)}),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def run(
     context: ModuleContext,
     config: ModuleConfig,
 ) -> dict[str, Any]:
     import librosa
+
+    stage_clock = time.perf_counter()
+
+    def mark(name: str) -> None:
+        nonlocal stage_clock
+        now = time.perf_counter()
+        _tuning_probe(name, now - stage_clock)
+        stage_clock = now
 
     p = config.parameters or {}
     t = config.thresholds or {}
@@ -363,6 +387,7 @@ def run(
         librosa.effects.harmonic(master_y, margin=hpss_margin),
         dtype=np.float32,
     )
+    mark("harmonic_extraction")
 
     master_global = _estimate_cents_librosa(
         master_y,
@@ -374,6 +399,7 @@ def run(
         int(context.sr),
         resolution,
     )
+    mark("global_tuning_estimates")
 
     master_values = _chunk_librosa(
         master_y,
@@ -389,6 +415,7 @@ def run(
         max_chunks=max_chunks,
         resolution=resolution,
     )
+    mark("chunk_tuning_estimates")
 
     master = _summary(
         master_values,
@@ -416,6 +443,7 @@ def run(
         max_internal_disagreement_cents=max_internal,
     )
 
+    mark("summaries")
     cqt_global = _cqt_detune_scan(
         harmonic_y,
         int(context.sr),
@@ -426,6 +454,7 @@ def run(
         n_octaves=cqt_octaves,
         hop_length=cqt_hop,
     )
+    mark("global_cqt_scan")
     cqt_values = _chunk_cqt_scan(
         harmonic_y,
         int(context.sr),
@@ -438,6 +467,7 @@ def run(
         n_octaves=cqt_octaves,
         hop_length=cqt_hop,
     )
+    mark("chunk_cqt_scans")
     cqt_summary = _summary(
         cqt_values,
         minimum_chunk_support=min_chunks,
@@ -478,6 +508,7 @@ def run(
         "source": "cross-method-tuning-consensus-r2d",
     }
 
+    mark("consensus_and_projection")
     return {
         "raw": {
             "librosa_master": master,
