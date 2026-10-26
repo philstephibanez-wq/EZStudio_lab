@@ -212,6 +212,8 @@ def main() -> int:
         _log_event("profile_tuning_probe=" + env["EZSTUDIO_PROFILE_TUNING_PROBE"])
         env.setdefault("EZSTUDIO_PROFILE_HPSS_REUSE", "1")
         _log_event("profile_hpss_reuse=" + env["EZSTUDIO_PROFILE_HPSS_REUSE"])
+        env.setdefault("EZSTUDIO_PROFILE_HPSS_MEDIAN_BACKEND", "medfilt2d")
+        _log_event("profile_hpss_median_backend=" + env["EZSTUDIO_PROFILE_HPSS_MEDIAN_BACKEND"])
         runner = project_root / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
         if not runner.is_file():
             raise RuntimeError(f"profile_runner_missing:{runner}")
