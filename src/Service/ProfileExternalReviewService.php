@@ -449,7 +449,7 @@ SQL;
     public function assertionsForRun(int $runId): array
     {
         $stmt = $this->db->pdo()->prepare(<<<'SQL'
-SELECT sr.id,sr.config_json,sr.metrics_json,s.title,s.artist
+SELECT sr.id,sr.config_json,sr.metrics_json,sr.diagnostics_json,s.title,s.artist
 FROM scientific_runs sr JOIN songs s ON s.id=sr.song_id
 WHERE sr.id=? AND sr.item='profile' AND sr.state='done'
 LIMIT 1
@@ -466,6 +466,8 @@ SQL);
         }
         $metrics = $this->decodeObject((string)$row['metrics_json']);
         $config = $this->decodeObject((string)$row['config_json']);
+        $diagnostics = $this->decodeObject((string)$row['diagnostics_json']);
+        $profileView = is_array($diagnostics['profile_view'] ?? null) ? $diagnostics['profile_view'] : [];
         // No diagnostics, engine parameters, checkpoints, paths or stems cross this boundary.
         $paths = [
             'duree'=>['duration_seconds','duration_s','duration'],
@@ -497,6 +499,43 @@ SQL);
                 }
             }
             $items[$item] = $value;
+        }
+        // Read only consolidated musical conclusions, not engine/module outputs.
+        // "possible" and other uncertain decisions are not final assertions.
+        $finalScalar = static function (mixed $value): mixed {
+            if (!is_string($value) && !is_int($value) && !is_float($value)) return null;
+            $value = is_string($value) ? trim($value) : $value;
+            if ($value === '' || (is_string($value) && in_array(mb_strtolower($value),
+                ['possible','inconclusive','indéterminé','indetermine','not_scored','unknown','none'],true))) return null;
+            return $value;
+        };
+        $tempo = $metrics['tempo']['bpm'] ?? null;
+        if (is_numeric($tempo) && (float)$tempo > 0 && (float)$tempo <= 400) {
+            $items['tempo'] = (float)$tempo;
+        } elseif (!is_scalar($items['tempo'] ?? null)) {
+            $items['tempo'] = null;
+        }
+        $items['mesure'] = $finalScalar($metrics['time_signature']['label'] ?? $metrics['time_signature']['suggested_label'] ?? $items['mesure']);
+        $items['tonalite'] = $finalScalar($metrics['key']['label'] ?? $profileView['tonal']['label'] ?? $items['tonalite']);
+
+        // Instrument candidates are not finalized instruments. Only explicit
+        // accepted/confirmed decisions may cross the boundary.
+        $confirmed = [];
+        foreach (($profileView['instrumentation']['candidates'] ?? []) as $candidate) {
+            if (!is_array($candidate)) continue;
+            $decision = strtolower(trim((string)($candidate['decision'] ?? $candidate['status'] ?? '')));
+            if (!in_array($decision,['accepted','confirmed','detected'],true)) continue;
+            $label = $finalScalar($candidate['label'] ?? null);
+            if (is_string($label) && !in_array($label,$confirmed,true)) $confirmed[] = $label;
+        }
+        $items['instruments'] = $confirmed === [] ? null : $confirmed;
+        $choirs = $profileView['choirs']['decision'] ?? null;
+        $items['choeurs'] = $choirs === 'detected' ? 'présents' :
+            ($choirs === 'not_detected' || $choirs === 'absent' ? 'absents' : null);
+        // Tagging/voice scores are candidate suggestions, not final assertions.
+        // They remain only in LAB; emit no genre/voice inferred from rankings.
+        foreach (['genre','voix_principale','voix_accompagnement','harmonies_vocales'] as $candidateOnly) {
+            if (!isset($metrics['final_musical_assertions'])) $items[$candidateOnly] = null;
         }
         // Public, typed inventory. Historical "items" remains untouched for existing clients.
         // This intentionally does NOT enumerate arbitrary metrics or private diagnostics.

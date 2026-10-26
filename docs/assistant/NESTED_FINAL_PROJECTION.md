@@ -1,0 +1,5 @@
+# v1.4a(26) — projection des assertions finales imbriquées
+
+Sans réexécuter PROFILE : tempo depuis `metrics.tempo.bpm`, mesure depuis `metrics.time_signature.label`, tonalité depuis `metrics.key.label` avec repli sur le label tonal consolidé. Un candidat instrument n'est jamais transformé en final sans `decision/status=accepted|confirmed|detected` explicite ; chœurs uniquement `detected` ou négation explicite. Les tags de genre et les observations vocales exploratoires ne sont pas promus en conclusions. Propositions finales publiques explicites `final_musical_assertions` préservées. Les diagnostics sont lus côté LAB uniquement et ne figurent pas dans l'API des jobs. La durée déjà présente est conservée. Le job #181 n'est ni claim ni finish.
+
+Recette : tests, lint PHP, GET read-only `/internal/analysis/desktop/profile/ai-requests/181/context`, comparer les seules assertions effectivement émises au résumé du run #143. Une insuffisance d'assertions n'autorise pas le traitement partiel du job.
