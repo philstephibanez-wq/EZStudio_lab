@@ -135,7 +135,11 @@ def estimate_meter_from_chords_engine(
 
     hop = 512
     phase_mark("meter", "hpss_start")
-    harmonic, perc = librosa.effects.hpss(y)
+    if os.getenv("EZSTUDIO_PROFILE_HPSS_MEDIAN_BACKEND", "scipy") == "medfilt2d":
+        from ezstudio.pipeline.profile.hpss_median_optin import hpss_medfilt2d
+        harmonic, perc = hpss_medfilt2d(y)
+    else:
+        harmonic, perc = librosa.effects.hpss(y)
     if harmonic_sink is not None:
         harmonic_sink(harmonic)
 
