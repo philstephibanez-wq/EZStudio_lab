@@ -383,10 +383,30 @@ def run(
     max_cross = float(t.get("max_cross_method_disagreement_cents", 5.0))
 
     master_y = np.asarray(context.y, dtype=np.float32)
-    harmonic_y = np.asarray(
-        librosa.effects.harmonic(master_y, margin=hpss_margin),
-        dtype=np.float32,
+    cached_harmonic = (
+        context._meter_harmonic
+        if os.getenv("EZSTUDIO_PROFILE_HPSS_REUSE") == "1"
+        and hpss_margin == 1.0
+        and context._meter_harmonic_sr == int(context.sr)
+        and isinstance(context._meter_harmonic, np.ndarray)
+        and context._meter_harmonic.shape == master_y.shape
+        and context.y.dtype == np.float32
+        else None
     )
+    if cached_harmonic is not None:
+        harmonic_y = cached_harmonic
+    else:
+        harmonic_y = np.asarray(
+            librosa.effects.harmonic(master_y, margin=hpss_margin),
+            dtype=np.float32,
+        )
+    if os.getenv("EZSTUDIO_PROFILE_TUNING_PROBE") == "1":
+        print(
+            "EZSTUDIO_PROFILE_HPSS_REUSE "
+            + ("cache_hit" if cached_harmonic is not None else "fallback"),
+            file=sys.stderr,
+            flush=True,
+        )
     mark("harmonic_extraction")
 
     master_global = _estimate_cents_librosa(

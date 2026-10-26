@@ -90,6 +90,7 @@ def estimate_meter_from_chords_engine(
     sr: int,
     *,
     confidence_threshold: float = 0.50,
+    harmonic_sink=None,
 ) -> dict:
     """
     Reuse the metric logic already validated in python/engine.py without
@@ -135,6 +136,8 @@ def estimate_meter_from_chords_engine(
     hop = 512
     phase_mark("meter", "hpss_start")
     harmonic, perc = librosa.effects.hpss(y)
+    if harmonic_sink is not None:
+        harmonic_sink(harmonic)
 
     phase_mark("meter", "hpss_done")
     tempo_arr, beats = librosa.beat.beat_track(

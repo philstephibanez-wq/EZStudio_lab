@@ -40,6 +40,8 @@ class ModuleContext:
     model_root: Path
     ai_models_root: Path
     _resampled: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
+    _meter_harmonic: np.ndarray | None = field(default=None, repr=False)
+    _meter_harmonic_sr: int | None = field(default=None, repr=False)
 
     def resampled_audio(self, target_sr: int) -> np.ndarray:
         """Run-local cache for identical Librosa transformations."""
