@@ -12,6 +12,41 @@
 </div>
 </div>
 
+<details class="card" style="margin-top:10px">
+<summary style="cursor:pointer;font-weight:600">Corriger le titre et l’interprète</summary>
+<form id="song-identity-form" action="{{ path('profile_song_identity', {id: selected_song.id}) }}" method="post" style="margin-top:12px">
+<div class="row" style="gap:12px;align-items:end;flex-wrap:wrap">
+<label>Titre<input name="title" type="text" maxlength="250" required value="{{ selected_song.title }}" style="min-width:260px"></label>
+<label>Interprète<input name="artist" type="text" maxlength="250" required value="{{ selected_song.artist }}" style="min-width:260px"></label>
+<button type="submit">Enregistrer</button>
+</div>
+<p class="meta" style="margin-top:8px">Corrige les métadonnées du morceau, sans relancer PROFILE ni modifier les analyses.</p>
+<p id="song-identity-message" role="status" aria-live="polite"></p>
+</form>
+</details>
+<script>
+document.getElementById('song-identity-form')?.addEventListener('submit', async function(event) {
+  event.preventDefault();
+  const button = this.querySelector('button[type="submit"]');
+  const status = document.getElementById('song-identity-message');
+  button.disabled = true;
+  status.textContent = 'Enregistrement…';
+  try {
+    const response = await fetch(this.action, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'X-EZS-Song-Identity': 'save'},
+      body: new FormData(this)
+    });
+    if (!response.ok) throw new Error((await response.text()).slice(0,240));
+    window.location.reload();
+  } catch (error) {
+    status.textContent = 'Échec : ' + error.message;
+    button.disabled = false;
+  }
+});
+</script>
+
 {% if profile_runs %}
 <div class="card"><form method="get" action="{{ path('workbench_profile') }}" class="row"><input type="hidden" name="song" value="{{ selected_song.id }}"><label>Run PROFILE<select name="run" onchange="this.form.submit()">{% for r in profile_runs %}<option value="{{ r.id }}" {{ selected_profile_run and r.id == selected_profile_run.id ? 'selected' : '' }}>{{ r.public_id }} · {{ r.state }} · {{ r.created_at }}</option>{% endfor %}</select></label></form></div>
 {% endif %}

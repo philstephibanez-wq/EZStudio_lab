@@ -134,6 +134,32 @@ final class ProfileController extends AbstractController
         );
     }
 
+    #[Route('/workbench/profile/song/{id<\\d+>}/identity',name:'profile_song_identity',methods:['POST'])]
+    public function updateIdentity(int $id, Request $request, \App\Service\SongIdentityEditor $editor): Response
+    {
+        // Same-origin AJAX with non-simple header; no Symfony Form/CSRF extension installed.
+        if ($request->headers->get('X-EZS-Song-Identity') !== 'save') {
+            return new Response('Requête non autorisée.',403);
+        }
+        $origin=$request->headers->get('Origin');
+        if ($origin !== null && $origin !== $request->getSchemeAndHttpHost()) {
+            return new Response('Origine non autorisée.',403);
+        }
+        $site=$request->headers->get('Sec-Fetch-Site');
+        if ($site !== null && !in_array($site,['same-origin','none'],true)) {
+            return new Response('Origine non autorisée.',403);
+        }
+        try {
+            $editor->update($id, (string)$request->request->get('title',''),
+                (string)$request->request->get('artist',''));
+        } catch (\InvalidArgumentException $e) {
+            return new Response($e->getMessage(),422);
+        } catch (\RuntimeException $e) {
+            return new Response($e->getMessage(),404);
+        }
+        return new \Symfony\Component\HttpFoundation\JsonResponse(['ok'=>true,'song_id'=>$id]);
+    }
+
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
     public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileExecutionService $execution): Response
     {
