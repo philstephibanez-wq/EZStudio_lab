@@ -148,6 +148,19 @@ final class ProfileAiRequestController extends AbstractController
         }
     }
 
+    #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\\d+>}/checkpoints',name:'lab_internal_assistant_checkpoint',methods:['GET','POST'])]
+    public function checkpoints(Request $request,int $id,\App\Service\AssistantJobCheckpointService $service): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        try {
+            if ($request->isMethod('GET')) {
+                return $this->json(['schema'=>'ezstudio.assistant-checkpoint-history.v1','job_id'=>$id,'events'=>$service->history($id)]);
+            }
+            return $this->json(['ok'=>true,'event'=>$service->save($id,$request->toArray())],201);
+        } catch (\InvalidArgumentException $e) {return $this->json(['error'=>$e->getMessage()],422);}
+        catch (\Throwable $e) {return $this->json(['error'=>$e->getMessage()],409);}
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/claim',name:'lab_internal_profile_ai_claim',methods:['POST'])]
     public function claim(Request $request,int $id): JsonResponse
     {
