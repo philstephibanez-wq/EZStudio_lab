@@ -72,6 +72,19 @@ def _metric_level_candidates(
         "calibrated": False,
     }
 
+def _harmonic_novelty_from_harmonic(h, sr, hop, bf):
+    """Same computation as engine.harmonic_novelty, reusing existing HPSS."""
+    import librosa
+
+    c = librosa.feature.chroma_cqt(y=h, sr=sr, hop_length=hop)
+    if c.shape[1] < 2:
+        return np.zeros(len(bf))
+    a, b = c[:, :-1], c[:, 1:]
+    nov = np.r_[0.0, 1.0 - np.sum(a * b, axis=0) / (np.linalg.norm(a, axis=0) * np.linalg.norm(b, axis=0) + 1e-9)]
+    from engine import sample_frames
+    return sample_frames(nov, bf)
+
+
 def estimate_meter_from_chords_engine(
     y: np.ndarray,
     sr: int,
@@ -121,7 +134,7 @@ def estimate_meter_from_chords_engine(
 
     hop = 512
     phase_mark("meter", "hpss_start")
-    _, perc = librosa.effects.hpss(y)
+    harmonic, perc = librosa.effects.hpss(y)
 
     phase_mark("meter", "hpss_done")
     tempo_arr, beats = librosa.beat.beat_track(
@@ -153,7 +166,7 @@ def estimate_meter_from_chords_engine(
         bf,
     )
     bass = bass_feature(y, sr, hop, bf)
-    harm = harmonic_novelty(y, sr, hop, bf)
+    harm = _harmonic_novelty_from_harmonic(harmonic, sr, hop, bf)
 
     phase_mark("meter", "features_done")
     meter = auto_signature(z(onset), z(bass), z(harm))
