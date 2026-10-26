@@ -5,6 +5,7 @@ import os
 import json
 import time
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -270,14 +271,15 @@ def _chunk_cqt_scan(
     n_octaves: int,
     hop_length: int,
 ) -> list[float]:
-    values = []
-    for chunk in _chunk_slices(
+    chunks = _chunk_slices(
         y,
         sr,
         chunk_seconds=chunk_seconds,
         max_chunks=max_chunks,
-    ):
-        result = _cqt_detune_scan(
+    )
+
+    def scan(chunk: np.ndarray) -> dict[str, Any]:
+        return _cqt_detune_scan(
             chunk,
             sr,
             offset_min_cents=offset_min_cents,
@@ -287,6 +289,23 @@ def _chunk_cqt_scan(
             n_octaves=n_octaves,
             hop_length=hop_length,
         )
+
+    # Opt-in and capped: FFT/Numba/BLAS may already use internal threads.
+    # executor.map preserves original chunk order, including tied rankings.
+    workers_text = os.getenv("EZSTUDIO_PROFILE_CQT_WORKERS", "1")
+    try:
+        workers = int(workers_text)
+    except ValueError:
+        workers = 1
+    workers = max(1, min(workers, 2, len(chunks)))
+    if workers == 1:
+        results = [scan(chunk) for chunk in chunks]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            results = list(executor.map(scan, chunks))
+
+    values = []
+    for result in results:
         if result.get("available") and result.get("cents") is not None:
             values.append(float(result["cents"]))
     return values
