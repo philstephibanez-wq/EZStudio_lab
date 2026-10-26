@@ -5,6 +5,7 @@ import math
 from typing import Any, Callable
 
 from module import ModuleContext, ModuleConfig, run_module
+from optimization_guard import run_with_probe
 from canonical_profile import build_genre_hierarchy, build_vocal_profile
 
 
@@ -115,7 +116,7 @@ class ModuleRegistry:
             if progress:
                 percent = 8 + int((index / total) * 84)
                 progress(percent, f"PROFILE: {spec.display_name}")
-            records.append(run_module(spec, context, fn))
+            records.append(run_with_probe(spec, context, fn, run_module))
 
         by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for record in records:
