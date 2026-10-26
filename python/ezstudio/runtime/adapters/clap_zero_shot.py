@@ -211,9 +211,15 @@ def run_clap_zero_shot(
         return result, warnings
 
     try:
+        phase_mark("clap", "import_librosa_start")
         import librosa
+        phase_mark("clap", "import_librosa_done")
+        phase_mark("clap", "import_torch_start")
         import torch
+        phase_mark("clap", "import_torch_done")
+        phase_mark("clap", "import_transformers_start")
         from transformers import ClapModel, ClapProcessor
+        phase_mark("clap", "import_transformers_done")
     except Exception as exc:
         warnings.append(
             f"profile_clap_dependency_unavailable:{type(exc).__name__}:{exc}"
