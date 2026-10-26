@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "python/ezstudio/runtime/profile_phase_probe.py"
 
 class ProfilePhaseProbeTests(unittest.TestCase):

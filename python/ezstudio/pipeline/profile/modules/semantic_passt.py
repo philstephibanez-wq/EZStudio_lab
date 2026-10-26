@@ -20,8 +20,7 @@ def _temporal_summary(
     top_n: int = 25,
 ) -> dict[str, dict]:
     if matrix.ndim != 2 or matrix.shape[1] != len(labels):
-        phase_mark("passt", "postprocess_done")
-    return {}
+        return {}
     result: dict[str, dict] = {}
     for index in order[:top_n]:
         idx = int(index)
@@ -183,6 +182,7 @@ def run(context: ModuleContext) -> dict:
         for index in order[:25]
     ]
 
+    phase_mark("passt", "postprocess_done")
     return {
         "raw": {
             "audioset_scores": {

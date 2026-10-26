@@ -21,8 +21,7 @@ def _dependency_root() -> Path:
     )
 
 
-def     phase_mark("clap", "dependency_start")
-_prepare_imports() -> None:
+def _prepare_imports() -> None:
     dep_root = _dependency_root()
     if dep_root.is_dir() and str(dep_root) not in sys.path:
         sys.path.append(str(dep_root))
@@ -203,6 +202,7 @@ def run_clap_zero_shot(
         result[family] = []
 
     warnings: list[str] = []
+    phase_mark("clap", "dependency_start")
     _prepare_imports()
 
     model_dir = _model_dir(model_root, spec)
