@@ -204,6 +204,10 @@ def main() -> int:
     env.setdefault("EZSTUDIO_DEP_ROOT", str(runtime_deps_root))
 
     if kind == "profile":
+        # PROFILE only. The fresh child inherits this value, without restarting PHP/Caddy.
+        # A launcher-level explicit numpy override remains the rollback switch.
+        env.setdefault("EZSTUDIO_PROFILE_MADMOM_BACKEND", "cuda")
+        _log_event("profile_madmom_backend=" + env["EZSTUDIO_PROFILE_MADMOM_BACKEND"])
         runner = project_root / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
         if not runner.is_file():
             raise RuntimeError(f"profile_runner_missing:{runner}")
