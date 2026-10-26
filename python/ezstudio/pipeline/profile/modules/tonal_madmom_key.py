@@ -61,6 +61,42 @@ KEY_LABELS = [
 ]
 
 
+def _predict_cuda_custom_weights(processor, wav_path: Path) -> np.ndarray:
+    """Run historical NumPy weights through Torch CUDA, preserving Madmom frontend/postprocessing.
+
+    Explicit opt-in only. Never changes the active model files or NumPy processor.
+    """
+    import torch
+    from madmom_infer.torch.ml.nn import to_torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("madmom_cuda_unavailable")
+    stages = list(processor.processors)
+    neural_indexes = [
+        index for index, stage in enumerate(stages)
+        if type(stage).__name__ in ("NeuralNetworkEnsemble", "NeuralNetwork")
+    ]
+    if len(neural_indexes) != 1 or neural_indexes[0] != len(stages) - 3:
+        raise RuntimeError("madmom_cuda_unexpected_pipeline")
+    index = neural_indexes[0]
+    features = str(wav_path)
+    for stage in stages[:index]:
+        features = stage(features)
+    features = np.asarray(features, dtype=np.float32)
+
+    network = to_torch(stages[index]).eval().to("cuda")
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    with torch.inference_mode():
+        output = network(torch.as_tensor(features, device="cuda"))
+        if not isinstance(output, torch.Tensor):
+            raise RuntimeError("madmom_cuda_unexpected_output")
+        prediction = output.detach().cpu().numpy()
+    for stage in stages[index + 1:]:
+        prediction = stage(prediction)
+    return np.asarray(prediction, dtype=np.float64)
+
+
 def _run(context: ModuleContext, model_files: list[Path]) -> dict:
     roots = prepare_profile_imports()
 
@@ -90,9 +126,15 @@ def _run(context: ModuleContext, model_files: list[Path]) -> dict:
         nn_files=[str(path) for path in model_files],
         backend="numpy",
     )
+    backend = os.getenv('EZSTUDIO_PROFILE_MADMOM_BACKEND', 'numpy').strip().lower()
+    if backend not in ('numpy', 'cuda'):
+        raise RuntimeError('madmom_invalid_backend:' + backend)
     wav_path = _temporary_wav(context)
     try:
-        prediction = np.asarray(processor(str(wav_path)), dtype=np.float64)
+        if backend == 'cuda':
+            prediction = _predict_cuda_custom_weights(processor, wav_path)
+        else:
+            prediction = np.asarray(processor(str(wav_path)), dtype=np.float64)
     finally:
         try:
             wav_path.unlink(missing_ok=True)
@@ -143,7 +185,7 @@ def _run(context: ModuleContext, model_files: list[Path]) -> dict:
                 for path in model_files
             },
         },
-        "device": "cpu:numpy",
+        "device": "cuda:torch" if backend == "cuda" else "cpu:numpy",
     }
 
 
