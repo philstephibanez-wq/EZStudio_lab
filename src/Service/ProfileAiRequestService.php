@@ -83,6 +83,31 @@ final class ProfileAiRequestService
     }
 
 
+    /** Read-only request identity; never load scientific metrics into this queue service. */
+    public function contextForJob(int $jobId): ?array
+    {
+        if ($jobId < 1) return null;
+        $stmt = $this->pdo()->prepare(<<<'SQL'
+SELECT aj.id AS job_id, aj.scientific_run_id AS run_id,
+       aj.song_id, aj.status, sr.state AS run_state
+FROM analysis_jobs aj
+JOIN scientific_runs sr ON sr.id=aj.scientific_run_id
+WHERE aj.id=? AND aj.kind='assistant.profile.review'
+  AND aj.song_id=sr.song_id AND sr.item='profile'
+LIMIT 1
+SQL);
+        $stmt->execute([$jobId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        return [
+            'job_id'=>(int)$row['job_id'],
+            'run_id'=>(int)$row['run_id'],
+            'song_id'=>(int)$row['song_id'],
+            'job_status'=>(string)$row['status'],
+            'run_state'=>(string)$row['run_state'],
+        ];
+    }
+
     private function ensureMaintenanceTable(): void
     {
         $this->pdo()->exec("CREATE TABLE IF NOT EXISTS profile_ai_maintenance (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL DEFAULT 0)");

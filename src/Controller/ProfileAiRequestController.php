@@ -99,6 +99,55 @@ final class ProfileAiRequestController extends AbstractController
         return $this->json(['schema'=>'ezstudio.profile-ai-requests.v1','requests'=>$this->queue->pending()]);
     }
 
+    /**
+     * Contract #11: immutable, strictly whitelisted business view for one AI job.
+     * No engine outputs, scores, diagnostics, scientific settings or audio leave LAB.
+     */
+    #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/context', name:'lab_internal_profile_ai_job_context', methods:['GET'])]
+    public function jobContext(Request $request, int $id, \App\Service\ProfileExternalReviewService $reviews): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $job = $this->queue->contextForJob($id);
+        if ($job === null) return $this->json(['error'=>'ai_job_not_found'],404);
+        if ($job['run_state'] !== 'done') return $this->json(['error'=>'scientific_run_not_ready'],409);
+        if (!in_array($job['job_status'], ['queued','running'], true)) {
+            return $this->json(['error'=>'ai_job_not_active'],409);
+        }
+        try {
+            $final = $reviews->assertionsForRun($job['run_id']);
+            $title = trim((string)($final['title'] ?? ''));
+            $artist = trim((string)($final['artist'] ?? ''));
+            if ($title === '' || $artist === '') {
+                return $this->json(['error'=>'recording_identity_incomplete'],409);
+            }
+            $assertions=[];
+            foreach (($final['final_assertions'] ?? []) as $item) {
+                if (!is_array($item)) continue;
+                $idValue = $item['id'] ?? null;
+                $dimension = $item['dimension'] ?? null;
+                $value = $item['value'] ?? null;
+                if (!is_string($idValue) || !is_string($dimension)
+                    || !is_scalar($value) || is_bool($value)) continue;
+                $assertions[]=['id'=>$idValue,'characteristic'=>$dimension,'value'=>$value];
+            }
+            if ($assertions === []) return $this->json(['error'=>'final_assertions_absent'],409);
+            return $this->json([
+                'schema'=>'ezstudio.assistant-final-job.v1',
+                'job_id'=>$job['job_id'],
+                'run_id'=>$job['run_id'],
+                'song_id'=>$job['song_id'],
+                'status'=>$job['job_status'],
+                'recording'=>[
+                    'title'=>$title,'artist'=>$artist,
+                    'version'=>null,'track_id'=>(string)$job['song_id'],
+                ],
+                'assertions'=>$assertions,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->json(['error'=>'final_assertions_unavailable'],409);
+        }
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/claim',name:'lab_internal_profile_ai_claim',methods:['POST'])]
     public function claim(Request $request,int $id): JsonResponse
     {
