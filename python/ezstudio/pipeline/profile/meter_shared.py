@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from ezstudio.runtime.profile_phase_probe import mark as phase_mark
 
 
 
@@ -91,9 +92,11 @@ def estimate_meter_from_chords_engine(
     if dep_root.is_dir() and str(dep_root) not in sys.path:
         sys.path.append(str(dep_root))
 
+    phase_mark("meter", "dependency_start")
     import librosa
     import torch
 
+    phase_mark("meter", "dependency_done")
     if not torch.cuda.is_available():
         raise RuntimeError("profile_meter_cuda_required")
 
@@ -117,8 +120,10 @@ def estimate_meter_from_chords_engine(
         ) from exc
 
     hop = 512
+    phase_mark("meter", "hpss_start")
     _, perc = librosa.effects.hpss(y)
 
+    phase_mark("meter", "hpss_done")
     tempo_arr, beats = librosa.beat.beat_track(
         y=perc,
         sr=sr,
@@ -141,6 +146,7 @@ def estimate_meter_from_chords_engine(
             "reason": "too_few_beats",
         }
 
+    phase_mark("meter", "beat_detection_done")
     bf = librosa.time_to_frames(beats, sr=sr, hop_length=hop)
     onset = sample_frames(
         librosa.onset.onset_strength(y=perc, sr=sr, hop_length=hop),
@@ -149,6 +155,7 @@ def estimate_meter_from_chords_engine(
     bass = bass_feature(y, sr, hop, bf)
     harm = harmonic_novelty(y, sr, hop, bf)
 
+    phase_mark("meter", "features_done")
     meter = auto_signature(z(onset), z(bass), z(harm))
     initial_signature = str(meter["signature"])
 
@@ -163,12 +170,15 @@ def estimate_meter_from_chords_engine(
             f"profile_meter_checkpoint_missing:{checkpoint}"
         )
 
+    phase_mark("meter", "model_start")
     model = Audio2Frames(
         checkpoint_path=str(checkpoint),
         device="cuda",
         float16=False,
     )
+    phase_mark("meter", "model_done")
     _, db = model(y, sr)
+    phase_mark("meter", "inference_done")
     bt = sample_times(
         sigmoid(db.detach().float().cpu().numpy()),
         beats,

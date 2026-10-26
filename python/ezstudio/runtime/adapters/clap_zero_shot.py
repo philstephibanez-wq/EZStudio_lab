@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from ezstudio.runtime.profile_phase_probe import mark as phase_mark
 from ezstudio.runtime.decision import apply_decision
 from ezstudio.runtime.module_config import ModuleConfigDocument
 
@@ -20,7 +21,8 @@ def _dependency_root() -> Path:
     )
 
 
-def _prepare_imports() -> None:
+def     phase_mark("clap", "dependency_start")
+_prepare_imports() -> None:
     dep_root = _dependency_root()
     if dep_root.is_dir() and str(dep_root) not in sys.path:
         sys.path.append(str(dep_root))
@@ -218,11 +220,13 @@ def run_clap_zero_shot(
         )
         return result, warnings
 
+    phase_mark("clap", "dependency_done")
     if not torch.cuda.is_available():
         warnings.append("profile_clap_cuda_required")
         return result, warnings
 
     try:
+        phase_mark("clap", "model_start")
         processor = ClapProcessor.from_pretrained(
             str(model_dir),
             local_files_only=True,
@@ -232,8 +236,11 @@ def run_clap_zero_shot(
             local_files_only=True,
         ).to("cuda")
         model.eval()
+        phase_mark("clap", "model_done")
 
+        phase_mark("clap", "decode_start")
         y, sr = librosa.load(str(source), sr=sample_rate, mono=True)
+        phase_mark("clap", "decode_done")
         chunks = _even_chunks(
             y,
             sr,
@@ -245,6 +252,7 @@ def run_clap_zero_shot(
         accumulated = None
         chunk_logits: list[np.ndarray] = []
 
+        phase_mark("clap", "inference_start")
         with torch.inference_mode():
             for chunk in chunks:
                 inputs = processor(
@@ -272,10 +280,12 @@ def run_clap_zero_shot(
                     else accumulated + logits
                 )
 
+        phase_mark("clap", "inference_done")
         if accumulated is None:
             warnings.append("profile_clap_no_audio_chunks")
             return result, warnings
 
+        phase_mark("clap", "postprocess_start")
         mean_logits = accumulated / float(len(chunks))
         decisions: dict[str, Any] = {}
         for family in families:
@@ -307,6 +317,7 @@ def run_clap_zero_shot(
         }
         result["decisions"] = decisions
         result["available"] = True
+        phase_mark("clap", "postprocess_done")
         result["chunks"] = len(chunks)
         result["chunk_seconds"] = chunk_seconds
         result["sample_rate"] = sample_rate

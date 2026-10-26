@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from module import ModuleContext, file_sha256
+from ezstudio.runtime.profile_phase_probe import mark as phase_mark
 from runtime_deps import prepare_profile_imports
 
 
@@ -19,7 +20,8 @@ def _temporal_summary(
     top_n: int = 25,
 ) -> dict[str, dict]:
     if matrix.ndim != 2 or matrix.shape[1] != len(labels):
-        return {}
+        phase_mark("passt", "postprocess_done")
+    return {}
     result: dict[str, dict] = {}
     for index in order[:top_n]:
         idx = int(index)
@@ -57,6 +59,7 @@ def _temporal_summary(
 
 
 def run(context: ModuleContext) -> dict:
+    phase_mark("passt", "dependency_start")
     prepare_profile_imports()
 
     try:
@@ -67,6 +70,7 @@ def run(context: ModuleContext) -> dict:
             f"passt_parent_dependency_unavailable:{type(exc).__name__}:{exc}"
         ) from exc
 
+    phase_mark("passt", "dependency_done")
     passt_python = Path(
         os.getenv(
             "EZSTUDIO_PASST_PYTHON",
@@ -95,12 +99,14 @@ def run(context: ModuleContext) -> dict:
     torch_home.mkdir(parents=True, exist_ok=True)
     cached = checkpoint
 
+    phase_mark("passt", "resample_start")
     audio = librosa.resample(
         np.asarray(context.y, dtype=np.float32),
         orig_sr=context.sr,
         target_sr=32000,
     ).astype(np.float32, copy=False)
 
+    phase_mark("passt", "resample_done")
     worker = Path(__file__).resolve().parents[1] / "passt_worker.py"
     if not worker.is_file():
         raise RuntimeError(f"passt_worker_missing:{worker}")
@@ -135,6 +141,7 @@ def run(context: ModuleContext) -> dict:
             "--torch-home",
             str(torch_home),
         ]
+        phase_mark("passt", "subprocess_start")
         completed = subprocess.run(
             command,
             check=False,
@@ -143,6 +150,7 @@ def run(context: ModuleContext) -> dict:
             encoding="utf-8",
             errors="replace",
         )
+        phase_mark("passt", "subprocess_done")
         if completed.returncode != 0:
             message = (
                 (completed.stderr or "").strip()
@@ -153,6 +161,7 @@ def run(context: ModuleContext) -> dict:
 
         child = json.loads(output_path.read_text(encoding="utf-8"))
 
+    phase_mark("passt", "postprocess_start")
     scores = np.asarray(child.get("scores") or [], dtype=np.float64)
     per_chunk_scores = np.asarray(
         child.get("per_chunk_scores") or [],
