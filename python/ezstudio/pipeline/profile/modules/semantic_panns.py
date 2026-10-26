@@ -91,11 +91,7 @@ def run(context: ModuleContext) -> dict:
     if not checkpoint.is_file():
         raise RuntimeError(f"panns_checkpoint_missing:{checkpoint}")
 
-    audio = librosa.resample(
-        np.asarray(context.y, dtype=np.float32),
-        orig_sr=context.sr,
-        target_sr=32000,
-    ).astype(np.float32, copy=False)
+    audio = context.resampled_audio(32000)
 
     tagger = AudioTagging(
         checkpoint_path=str(checkpoint),

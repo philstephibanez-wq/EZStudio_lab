@@ -39,6 +39,26 @@ class ModuleContext:
     sr: int
     model_root: Path
     ai_models_root: Path
+    _resampled: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
+
+    def resampled_audio(self, target_sr: int) -> np.ndarray:
+        """Run-local cache for identical Librosa transformations."""
+        import librosa
+
+        target_sr = int(target_sr)
+        if target_sr <= 0:
+            raise ValueError("invalid_target_sample_rate")
+        audio = self._resampled.get(target_sr)
+        if audio is None:
+            audio = librosa.resample(
+                np.asarray(self.y, dtype=np.float32),
+                orig_sr=self.sr,
+                target_sr=target_sr,
+            ).astype(np.float32, copy=False)
+            audio.flags.writeable = False
+            self._resampled[target_sr] = audio
+        return audio
+
 
 
 def file_sha256(path: Path) -> str | None:

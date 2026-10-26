@@ -99,11 +99,7 @@ def run(context: ModuleContext) -> dict:
     cached = checkpoint
 
     phase_mark("passt", "resample_start")
-    audio = librosa.resample(
-        np.asarray(context.y, dtype=np.float32),
-        orig_sr=context.sr,
-        target_sr=32000,
-    ).astype(np.float32, copy=False)
+    audio = context.resampled_audio(32000)
 
     phase_mark("passt", "resample_done")
     worker = Path(__file__).resolve().parents[1] / "passt_worker.py"
