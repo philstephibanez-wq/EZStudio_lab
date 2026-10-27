@@ -21,7 +21,12 @@ class TargetedReviewEventTest(unittest.TestCase):
    with patch.object(event.reports,"collect",return_value=iter([(
       "assistant/profile/run-000042/revision-000007.json",
       {"revision_id":7,"status":"completed"})])):
-    with sqlite3.connect(db) as c:c.execute("UPDATE profile_external_revisions SET status='completed'");c.commit()
+    c=sqlite3.connect(db)
+    try:
+     c.execute("UPDATE profile_external_revisions SET status='completed'")
+     c.commit()
+    finally:
+     c.close()
     self.assertEqual(event.select_revision(db,7)[0],"assistant/profile/run-000042/revision-000007.json")
  def test_no_publication_on_dry_run(self):
   with patch.object(event,"select_revision",return_value=("one.json",{"revision_id":8})),patch.object(event.reports,"publish") as upload:
