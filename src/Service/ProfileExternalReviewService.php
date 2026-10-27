@@ -285,33 +285,7 @@ SQL);
             throw new \RuntimeException('profile_external_review_persist_failed');
         }
 
-        // Durable event, only after the completed review is persisted.
-        // Publication is deliberately NOT performed inside the HTTP request.
-        if ($status === 'completed') {
-            $this->recordCompletedReportEvent((int)$row['id'], (int)$runId, $now);
-        }
-
         return $this->hydrate($row);
-    }
-
-    private function recordCompletedReportEvent(int $revisionId, int $runId, string $now): void
-    {
-        $this->db->pdo()->exec(<<<'SQL'
-CREATE TABLE IF NOT EXISTS profile_report_events (
-    revision_id INTEGER PRIMARY KEY,
-    run_id INTEGER NOT NULL,
-    state TEXT NOT NULL CHECK(state IN ('pending','published')),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-)
-SQL);
-        // A repeated save of the same completed revision does not publish twice.
-        $statement = $this->db->pdo()->prepare(<<<'SQL'
-INSERT INTO profile_report_events(revision_id,run_id,state,created_at,updated_at)
-VALUES(?,?,'pending',?,?)
-ON CONFLICT(revision_id) DO NOTHING
-SQL);
-        $statement->execute([$revisionId, $runId, $now, $now]);
     }
 
     public function latestReviewForDisplay(?int $runId = null): ?array
