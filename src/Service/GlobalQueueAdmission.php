@@ -18,13 +18,27 @@ final class GlobalQueueAdmission
         if ((string) getenv('EZSTUDIO_GLOBAL_QUEUE_ADMISSION') !== '1') {
             return 'lab';
         }
-        $token = (string) (getenv('EZS_QUEUE_LAB_TOKEN') ?: '');
+        $token = self::token();
         if (preg_match('#^[A-Za-z0-9._~+/=\-]{32,256}$#D', $token) !== 1) {
             throw new \RuntimeException('global_queue_lab_token_missing_or_invalid');
         }
         return 'orchestrator';
     }
 
+    /** Symfony Dotenv may populate superglobals without calling putenv(). */
+    private static function token(): string
+    {
+        $native = getenv('EZS_QUEUE_LAB_TOKEN');
+        if (is_string($native) && $native !== '') {
+            return $native;
+        }
+        $server = $_SERVER['EZS_QUEUE_LAB_TOKEN'] ?? null;
+        if (is_string($server) && $server !== '') {
+            return $server;
+        }
+        $env = $_ENV['EZS_QUEUE_LAB_TOKEN'] ?? null;
+        return is_string($env) ? $env : '';
+    }
     /** This envelope intentionally contains no audio, song metadata, paths or presets. */
     public static function envelope(int $jobId, string $kind): array
     {
@@ -62,7 +76,7 @@ SQL);
             return true;
         }
         $envelope = self::envelope($jobId, (string) $row['kind']);
-        $token = (string) (getenv('EZS_QUEUE_LAB_TOKEN') ?: '');
+        $token = self::token();
         if (preg_match('#^[A-Za-z0-9._~+/=\-]{32,256}$#D', $token) !== 1) {
             $this->recordFailure($jobId, 'token_unavailable');
             return false;
