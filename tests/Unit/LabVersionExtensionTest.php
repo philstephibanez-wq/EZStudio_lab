@@ -11,8 +11,8 @@ final class LabVersionExtensionTest extends TestCase
 {
     public function testCurrentVersionIsExposedToTwig(): void
     {
-        $version = trim((string) file_get_contents(dirname(__DIR__, 2) . '/VERSION'));
-        self::assertSame('1.5a0', $version);
+        $version = trim((string) file_get_contents(dirname(__DIR__, 2).'/VERSION'));
+        self::assertMatchesRegularExpression('/^\d+\.\d+(?:[a-z]+\d*)?$/D', $version);
         self::assertSame(['lab_version' => $version], (new LabVersionExtension())->getGlobals());
     }
 

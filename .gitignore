@@ -15,3 +15,6 @@ README_V7N*.md
 scripts/preflight-v7n*.ps1
 
 data/
+
+# PHPUnit disposable runtime cache (never versioned)
+.phpunit.result.cache
