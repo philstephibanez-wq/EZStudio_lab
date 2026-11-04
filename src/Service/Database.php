@@ -142,6 +142,45 @@ SQL;
 
         $this->pdo->exec($sql);
 
+        $jobColumns = $this->pdo->query('PRAGMA table_info(analysis_jobs)')->fetchAll(PDO::FETCH_ASSOC);
+        $jobColumnNames = array_column($jobColumns, 'name');
+        if (!in_array('dispatch_owner', $jobColumnNames, true)) {
+            $this->pdo->exec("ALTER TABLE analysis_jobs ADD COLUMN dispatch_owner TEXT NOT NULL DEFAULT 'lab' CHECK(dispatch_owner IN ('lab','orchestrator'))");
+        }
+        // Atomic outbox: the owner and outbox record are committed with the job.
+        $this->pdo->exec(<<<'QUEUE_SQL'
+CREATE TABLE IF NOT EXISTS global_queue_admission_outbox (
+    job_id INTEGER PRIMARY KEY REFERENCES analysis_jobs(id) ON DELETE CASCADE,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','admitted')),
+    global_job_id INTEGER,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS trg_global_queue_admission_insert
+AFTER INSERT ON analysis_jobs WHEN NEW.dispatch_owner='orchestrator'
+BEGIN
+    INSERT INTO global_queue_admission_outbox(job_id,state,updated_at)
+    VALUES(NEW.id,'pending',NEW.created_at);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_global_queue_admission_fence_status
+BEFORE UPDATE OF status ON analysis_jobs
+WHEN OLD.dispatch_owner='orchestrator' AND NEW.status <> OLD.status
+BEGIN
+    SELECT RAISE(ABORT,'global_queue_dispatch_fenced');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_global_queue_admission_fence_owner
+BEFORE UPDATE OF dispatch_owner ON analysis_jobs
+WHEN OLD.dispatch_owner='orchestrator' AND NEW.dispatch_owner <> 'orchestrator'
+BEGIN
+    SELECT RAISE(ABORT,'global_queue_owner_immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_global_queue_admission_fence_delete
+BEFORE DELETE ON analysis_jobs WHEN OLD.dispatch_owner='orchestrator'
+BEGIN
+    SELECT RAISE(ABORT,'global_queue_cancel_protocol_required');
+END;
+QUEUE_SQL);
         $songColumns = $this->pdo->query("PRAGMA table_info(songs)")->fetchAll();
         $songColumnNames = array_map(
             static fn(array $row): string => (string)$row['name'],
@@ -566,8 +605,8 @@ SQL;
         $stmt = $this->pdo()->prepare(
             'INSERT INTO analysis_jobs(
                 run_id,scientific_run_id,song_id,source_path,
-                kind,status,progress,request_json,error,created_at,updated_at
-             ) VALUES(NULL,?,?,?,?,?,?,?,?,?,?)'
+                kind,status,progress,request_json,error,created_at,updated_at,dispatch_owner
+             ) VALUES(NULL,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
             $scientificRunId,
@@ -580,6 +619,7 @@ SQL;
             null,
             $now,
             $now,
+            GlobalQueueAdmission::owner(),
         ]);
 
         return (int)$this->pdo()->lastInsertId();
@@ -618,8 +658,8 @@ SQL;
         $stmt = $this->pdo()->prepare(
             'INSERT INTO analysis_jobs(
                 run_id,scientific_run_id,song_id,source_path,
-                kind,status,progress,request_json,error,created_at,updated_at
-             ) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+                kind,status,progress,request_json,error,created_at,updated_at,dispatch_owner
+             ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
             $benchmarkRunId,
@@ -633,6 +673,7 @@ SQL;
             null,
             $now,
             $now,
+            GlobalQueueAdmission::owner(),
         ]);
         $jobId = (int)$this->pdo()->lastInsertId();
 
@@ -683,7 +724,8 @@ SQL;
              FROM analysis_jobs j
              JOIN songs s ON s.id=j.song_id
              WHERE j.status='queued'
-               AND j.kind <> 'assistant.profile.review'
+                AND j.dispatch_owner='lab'
+                AND j.kind <> 'assistant.profile.review'
              ORDER BY j.created_at ASC,j.id ASC"
         );
 
@@ -748,7 +790,8 @@ SQL;
             $candidates = $pdo->query(
                 "SELECT * FROM analysis_jobs j
                  WHERE j.status='queued'
-                   AND j.kind <> 'assistant.profile.review'
+                    AND j.dispatch_owner='lab'
+                    AND j.kind <> 'assistant.profile.review'
                    AND NOT EXISTS (
                        SELECT 1
                        FROM analysis_resource_locks l

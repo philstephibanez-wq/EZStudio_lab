@@ -8,6 +8,7 @@ final class ProfileExecutionService
         private readonly Database $db,
         private readonly AnalysisRunRegistry $runRegistry,
         private readonly PresetRegistry $presets,
+        private readonly ?GlobalQueueAdmission $admission = null,
     ) {}
 
     public function queue(int $scientificRunId, string $sourcePath, string $audioHash): array
@@ -31,8 +32,8 @@ final class ProfileExecutionService
         $now = gmdate('c');
 
         $stmt = $this->db->pdo()->prepare(
-            'INSERT INTO analysis_jobs(run_id,scientific_run_id,song_id,source_path,kind,status,progress,request_json,error,created_at,updated_at)
-             VALUES(NULL,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO analysis_jobs(run_id,scientific_run_id,song_id,source_path,kind,status,progress,request_json,error,created_at,updated_at,dispatch_owner)
+             VALUES(NULL,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
             $scientificRunId,
@@ -45,6 +46,7 @@ final class ProfileExecutionService
             null,
             $now,
             $now,
+            GlobalQueueAdmission::owner(),
         ]);
 
         $jobId = (int)$this->db->pdo()->lastInsertId();
@@ -52,6 +54,9 @@ final class ProfileExecutionService
         $this->runRegistry->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
         $this->runRegistry->setLabel($scientificRunId, 'automatic_next_stage', 'false');
         $this->runRegistry->setState($scientificRunId, 'queued');
+        if ($this->admission !== null) {
+            $this->admission->publish($jobId);
+        }
         return ['scientific_run_id' => $scientificRunId, 'job_id' => $jobId];
     }
 

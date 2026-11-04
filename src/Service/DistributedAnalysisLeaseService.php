@@ -403,6 +403,7 @@ SQL);
              FROM analysis_jobs j
              JOIN songs s ON s.id=j.song_id
              WHERE j.status='queued'
+               AND j.dispatch_owner='lab'
                AND NOT EXISTS (
                    SELECT 1
                    FROM analysis_resource_locks l
@@ -531,6 +532,9 @@ SQL);
             }
             if ((string)$job['status'] !== 'queued') {
                 throw new \RuntimeException('job_not_queued');
+            }
+            if ((string)$job['dispatch_owner'] !== 'lab') {
+                throw new \RuntimeException('global_queue_dispatch_fenced');
             }
 
             $compat = $this->compatibility($job, $worker);
