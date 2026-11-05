@@ -13,8 +13,13 @@ final class GlobalQueueAdmission
     public function __construct(private readonly Database $db) {}
 
     /** Explicit activation; a missing secret must never silently select a legacy worker. */
-    public static function owner(): string
+    public static function owner(string $kind = 'profile'): string
     {
+        // Unrouted STEMS and CHORDS retain their proven LAB worker until separately integrated.
+        if (!in_array($kind, ['profile', 'stems', 'chords_scientific'], true)) {
+            throw new \InvalidArgumentException('unsupported_queue_owner_kind');
+        }
+        if ($kind !== 'profile') return 'lab';
         if ((string) getenv('EZSTUDIO_GLOBAL_QUEUE_ADMISSION') !== '1') {
             return 'lab';
         }

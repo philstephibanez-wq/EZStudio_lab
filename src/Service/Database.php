@@ -619,7 +619,7 @@ SQL;
             null,
             $now,
             $now,
-            GlobalQueueAdmission::owner(),
+            GlobalQueueAdmission::owner('stems'),
         ]);
 
         return (int)$this->pdo()->lastInsertId();
@@ -673,7 +673,7 @@ SQL;
             null,
             $now,
             $now,
-            GlobalQueueAdmission::owner(),
+            GlobalQueueAdmission::owner('chords_scientific'),
         ]);
         $jobId = (int)$this->pdo()->lastInsertId();
 
