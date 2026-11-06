@@ -1,0 +1,7 @@
+framework:
+    messenger:
+        transports:
+            profile_gpu:
+                dsn: 'ezs-profile://local'
+                retry_strategy:
+                    max_retries: 0

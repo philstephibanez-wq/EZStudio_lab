@@ -111,6 +111,6 @@ SQL);
                 return $value;
             }
         }
-        return '';
+        return GlobalQueueAdmission::localSetting('EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY');
     }
 }

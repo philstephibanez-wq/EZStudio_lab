@@ -20,7 +20,7 @@ final class GlobalQueueAdmission
             throw new \InvalidArgumentException('unsupported_queue_owner_kind');
         }
         if ($kind !== 'profile') return 'lab';
-        if ((string) getenv('EZSTUDIO_GLOBAL_QUEUE_ADMISSION') !== '1') {
+        if (self::setting('EZSTUDIO_GLOBAL_QUEUE_ADMISSION') !== '1') {
             return 'lab';
         }
         $token = self::token();
@@ -42,7 +42,40 @@ final class GlobalQueueAdmission
             return $server;
         }
         $env = $_ENV['EZS_QUEUE_LAB_TOKEN'] ?? null;
-        return is_string($env) ? $env : '';
+        return is_string($env) && $env !== '' ? $env : self::localSetting('EZS_QUEUE_LAB_TOKEN');
+    }
+
+    private static function setting(string $key): string
+    {
+        foreach ([getenv($key), $_SERVER[$key] ?? null, $_ENV[$key] ?? null] as $value) {
+            if (is_string($value) && $value !== '') return $value;
+        }
+        return self::localSetting($key);
+    }
+
+    /** Read only explicitly allowlisted LAB settings; no generic dotenv import. */
+    public static function localSetting(string $key): string
+    {
+        if (!in_array($key, ['EZSTUDIO_GLOBAL_QUEUE_ADMISSION', 'EZS_QUEUE_LAB_TOKEN', 'EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'], true)) return '';
+        $path = dirname(__DIR__, 2).'/.env.local';
+        if (!is_file($path) || is_link($path)) return '';
+        $lines = @file($path, FILE_IGNORE_NEW_LINES);
+        if (!is_array($lines)) return '';
+        $result = null;
+        foreach ($lines as $line) {
+            if (!is_string($line) || preg_match('/^\s*'.preg_quote($key, '/').'\s*=\s*(.*?)\s*$/D', $line, $m) !== 1) continue;
+            if ($result !== null) return '';
+            $value = trim($m[1]);
+            if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'")) {
+                if ($value[strlen($value) - 1] !== $value[0]) return '';
+                $value = substr($value, 1, -1);
+            }
+            if ($key === 'EZSTUDIO_GLOBAL_QUEUE_ADMISSION'
+                ? !in_array($value, ['0', '1'], true)
+                : preg_match('#^[A-Za-z0-9._~+/=\-]{32,256}$#D', $value) !== 1) return '';
+            $result = $value;
+        }
+        return $result ?? '';
     }
     /** This envelope intentionally contains no audio, song metadata, paths or presets. */
     public static function envelope(int $jobId, string $kind): array

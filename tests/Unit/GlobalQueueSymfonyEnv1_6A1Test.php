@@ -19,10 +19,11 @@ final class GlobalQueueSymfonyEnv1_6A1Test extends TestCase
         $env = $_ENV[$key] ?? null;
         try {
             putenv($key);
-            putenv($flag);
+            putenv($flag.'=0');
             unset($_SERVER[$key], $_ENV[$key]);
             self::assertSame('lab', GlobalQueueAdmission::owner());
             putenv($flag.'=1');
+            putenv($key.'=invalid');
             $this->expectException(\RuntimeException::class);
             GlobalQueueAdmission::owner();
         } finally {

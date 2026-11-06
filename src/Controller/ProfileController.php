@@ -160,6 +160,20 @@ final class ProfileController extends AbstractController
         return new \Symfony\Component\HttpFoundation\JsonResponse(['ok'=>true,'song_id'=>$id]);
     }
 
+    #[Route('/profile/{id<\d+>}/status', name: 'profile_status', methods: ['GET'])]
+    public function status(int $id, AnalysisRunRegistry $runs): Response
+    {
+        $run = $runs->run($id);
+        if (!$run || ($run['item'] ?? '') !== 'profile') {
+            return new Response('PROFILE introuvable', 404);
+        }
+        $state = (string) $run['state'];
+        $percent = (int) ($run['labels']['progress'] ?? 0);
+        return new \Symfony\Component\HttpFoundation\JsonResponse([
+            'state' => $state,
+            'progress' => max(0, min(100, $percent)),
+        ], 200, ['Cache-Control' => 'no-store']);
+    }
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
     public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileExecutionService $execution): Response
     {

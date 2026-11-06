@@ -113,6 +113,10 @@ SQL);
             'job_id' => $job['global_job_id'], 'kind' => 'profile',
         ], $token);
         $claim = $claimBody['job'] ?? null;
+        if ($claim === null) {
+            // Orchestrator has not granted the GPU; leave LAB queued, never spawn.
+            return ['lab_job_id' => $labJobId, 'global_job_id' => $job['global_job_id'], 'state' => 'waiting_gpu'];
+        }
         if (!is_array($claim) || (int) ($claim['id'] ?? 0) !== $job['global_job_id']
             || ($claim['producer'] ?? null) !== 'lab'
             || ($claim['external_id'] ?? null) !== 'analysis_job:'.$labJobId
@@ -178,6 +182,7 @@ SQL);
         stream_set_blocking($pipes[2], false);
         $nextHeartbeat = 0;
         $lastProgress = null;
+        $lastPersistedProgress = -1;
         $log = '';
         $exit = -1;
         try {
@@ -197,6 +202,10 @@ SQL);
                         if (is_array($progress) && is_int($progress['percent'] ?? null)) {
                             $lastProgress = max($lastProgress ?? 0, min(99, max(0, $progress['percent'])));
                         }
+                    }
+                    if ($lastProgress !== null && $lastProgress > $lastPersistedProgress) {
+                        $this->profile->progressFromJob($labJobId, $lastProgress);
+                        $lastPersistedProgress = $lastProgress;
                     }
                     $this->request('heartbeat', [
                         'job_id' => $job['global_job_id'], 'claim_generation' => $generation,

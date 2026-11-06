@@ -53,9 +53,9 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
 
 {% if selected_profile_run %}
 
-  {% set job_status = profile_job and profile_job.status is defined ? profile_job.status : selected_profile_run.state %}
-  {% set profile_percent = profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0) %}
-  {% set profile_active = job_status in ['queued','running','cancel_requested'] or selected_profile_run.state in ['queued','running'] %}
+  {% set job_status = selected_profile_run.state in ['done','error','running'] ? selected_profile_run.state : (profile_job and profile_job.status is defined ? profile_job.status : selected_profile_run.state) %}
+  {% set profile_percent = selected_profile_run.state in ['done','running'] ? (selected_profile_run.labels.progress ?? 0) : (profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0)) %}
+  {% set profile_active = selected_profile_run.state not in ['done','error'] and (job_status in ['queued','running','cancel_requested'] or selected_profile_run.state in ['queued','running']) %}
 
   {% if job_status == 'queued' %}
     <div class="card">
@@ -76,6 +76,35 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
     </div>
   {% endif %}
 
+  {% if profile_active %}
+    <script>
+    (function ($) {
+        'use strict';
+        if (!$) return;
+        var previousState = {{ selected_profile_run.state|json_encode|raw }};
+        var url = {{ path('profile_status', {id: selected_profile_run.id})|json_encode|raw }};
+        function pollProfile() {
+            $.ajax({url: url, method: 'GET', dataType: 'json', cache: false, timeout: 6000})
+                .done(function (data) {
+                    if (data.state === 'done' || data.state === 'error'
+                        || (previousState !== data.state && data.state === 'running')) {
+                        window.location.reload();
+                        return;
+                    }
+                    var percent = Math.max(0, Math.min(100, Number(data.progress) || 0));
+                    var region = $('.card').filter(function () {
+                        var heading = $(this).children('h2').first().text();
+                        return heading === 'PROFILE en attente' || heading === 'Progression PROFILE';
+                    }).first();
+                    region.find('progress').first().val(percent).text(percent + '%');
+                    region.find('.meta').first().text('Analyse PROFILE · ' + percent + '%');
+                })
+                .always(function () { window.setTimeout(pollProfile, 5000); });
+        }
+        window.setTimeout(pollProfile, 5000);
+    })(window.jQuery);
+    </script>
+  {% endif %}
 {% set p = selected_profile_run.metrics %}
 {% set t = selected_profile_run.diagnostics.tagging ?? {} %}
 <div class="card"><h2>Caractéristiques</h2><div class="kv">
