@@ -88,6 +88,18 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 @media(max-width:1050px){:root{--ezs-perf-width:280px}}
 </style>
 <link rel="stylesheet" href="/css/ezstudio-dark.css?v=1">
+<style id="ezs-queue-confirm-css">
+.ezs-confirm-dialog{max-width:min(92vw,470px);width:470px;padding:0;border:1px solid #536478;border-radius:12px;background:#1a232f;color:#eff5fc;box-shadow:0 16px 60px #000b;font:inherit}
+.ezs-confirm-dialog::backdrop{background:#020710b8;backdrop-filter:blur(2px)}
+.ezs-confirm-header{padding:17px 20px;border-bottom:1px solid #425063;display:flex;align-items:center;justify-content:space-between}
+.ezs-confirm-close{border:0;background:transparent;color:#cbd5e1;font-size:22px;padding:0 4px}
+.ezs-confirm-body{padding:22px 20px;line-height:1.5}
+.ezs-confirm-actions{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px 18px}
+.ezs-confirm-actions button{border-radius:7px;padding:9px 16px}
+.ezs-confirm-keep{background:#354253;border-color:#57667c;color:#fff}
+.ezs-confirm-accept{background:#b72c3b;border-color:#e14d60;color:#fff;font-weight:600}
+.ezs-confirm-dialog button:focus-visible{outline:3px solid #75c2ff;outline-offset:2px}
+</style>
 </head>
 <body>
 <header>
@@ -122,9 +134,24 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 </header>
 {% include '_gpu_monitor.html.twig' %}
 <div class="wrap">{% block body %}{% endblock %}</div>
+{% if app.environment == 'dev' and app.request.host in ['127.0.0.1', 'localhost'] %}
+<aside id="ezstudio-dev-diagnostic-region" class="wrap" aria-label="Diagnostic des jobs LAB">
+  <details id="ezstudio-queue-diagnostic" class="card">
+    <summary style="cursor:pointer;font-weight:700">Diagnostic technique LAB — demandes, jobs et exécutions</summary>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
+      <button type="button" id="ezstudio-queue-diagnostic-refresh">Actualiser</button>
+      <button type="button" id="ezstudio-queue-diagnostic-copy" class="secondary">Copier le diagnostic JSON</button>
+      <span role="status" aria-live="polite" id="ezstudio-queue-diagnostic-status">Non collecté</span>
+    </div>
+    <pre id="ezstudio-queue-diagnostic-output" tabindex="0" class="log">{ "status": "NON_COLLECTE" }</pre>
+    <div class="meta">Observation locale uniquement, sans données audio privées ni commande sur les workers. L'état global non consulté reste inconnu.</div>
+  </details>
+</aside>
+{% endif %}
 
   <script src="/vendor/jquery/jquery-4.0.0.min.js"></script>
   <script src="/vendor/jquery-ui/jquery-ui-1.14.2.min.js"></script>
-  <script src="/js/ezstudio-lab.js?v=r3b29a"></script>
+  <script src="/js/ezstudio-lab.js?v=1.6a15"></script>
+  {% if app.environment == 'dev' and app.request.host in ['127.0.0.1', 'localhost'] %}<script src="/js/ezstudio-queue-debug.js?v=1.6a14"></script>{% endif %}
 </body>
 </html>

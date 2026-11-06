@@ -5,15 +5,29 @@ const num=v=>Number.isFinite(Number(v))?Number(v):0;
 const fmt=(v,d=0)=>Number.isFinite(Number(v))?Number(v).toFixed(d):'—';
 function confirmUi(msg){
  const d=$.Deferred();
- if(!$.ui||!$.ui.dialog){d.resolve(window.confirm(msg));return d.promise();}
- $('<div>').text(msg).dialog({modal:true,title:'Confirmation',resizable:false,minWidth:380,
- buttons:[
-  {text:'Annuler',click:function(){d.resolve(false);$(this).dialog('close');}},
-  {text:'OK',click:function(){d.resolve(true);$(this).dialog('close');}}
- ],
- close:function(){$(this).dialog('destroy').remove();if(d.state()==='pending')d.resolve(false);}
- });
+ if(!window.HTMLDialogElement){catalogQueueError('Confirmation HTML indisponible ; action abandonnée.');d.resolve(false);return d.promise();}
+ const dialog=document.createElement('dialog');
+ dialog.className='ezs-confirm-dialog';
+ dialog.setAttribute('aria-labelledby','ezs-confirm-title');
+ dialog.innerHTML='<div class="ezs-confirm-header"><strong id="ezs-confirm-title">Confirmation</strong><button type="button" class="ezs-confirm-close" aria-label="Fermer">×</button></div><div class="ezs-confirm-body"></div><div class="ezs-confirm-actions"><button type="button" class="ezs-confirm-keep">Conserver</button><button type="button" class="ezs-confirm-accept">Confirmer</button></div>';
+ dialog.querySelector('.ezs-confirm-body').textContent=msg;
+ document.body.appendChild(dialog);
+ let decided=false;
+ const active=document.activeElement;
+ function settle(ok){if(decided)return;decided=true;d.resolve(ok);dialog.close();}
+ $(dialog).on('click','.ezs-confirm-keep, .ezs-confirm-close',()=>settle(false));
+ $(dialog).on('click','.ezs-confirm-accept',()=>settle(true));
+ $(dialog).on('cancel',e=>{e.preventDefault();settle(false);});
+ $(dialog).on('close',()=>{if(!decided){decided=true;d.resolve(false);}dialog.remove();if(active&&active.focus)active.focus();});
+ try{dialog.showModal();dialog.querySelector('.ezs-confirm-keep').focus();}
+ catch(_){dialog.remove();catalogQueueError('Confirmation indisponible.');d.resolve(false);}
  return d.promise();
+}
+function catalogQueueError(message){
+ const root=document.getElementById('catalog-live-phase')||document.body;
+ let notice=document.getElementById('ezstudio-catalog-queue-error');
+ if(!notice){notice=document.createElement('div');notice.id='ezstudio-catalog-queue-error';notice.setAttribute('role','alert');notice.setAttribute('aria-live','assertive');notice.className='card';root.insertBefore(notice,root.firstChild);}
+ notice.textContent=String(message||'Opération impossible');
 }
 function loadHistory(){try{const now=Date.now(),a=JSON.parse(localStorage.getItem(KEY)||'[]');return $.grep(Array.isArray(a)?a:[],r=>r&&now-num(r.t)<=WINDOW).slice(-MAX);}catch(e){console.error('EZStudio monitor history load failed',e);return[];}}
 function saveHistory(a){try{const now=Date.now();localStorage.setItem(KEY,JSON.stringify($.grep(a,r=>r&&now-num(r.t)<=WINDOW).slice(-MAX)));}catch(_){}}
@@ -106,7 +120,7 @@ function initCatalog(){
   const url=$button.attr('data-job-cancel-url');
 
   if(!Number.isInteger(jobId)||jobId<=0||!url){
-   window.alert('Annulation impossible : job ou route invalide.');
+   catalogQueueError('Annulation impossible : job ou route invalide.');
    return;
   }
 
@@ -131,7 +145,7 @@ function initCatalog(){
      (xhr.responseJSON&&xhr.responseJSON.error)
      ||String(xhr.responseText||'').trim()
      ||('Annulation impossible · HTTP '+xhr.status);
-    window.alert(message);
+    catalogQueueError(message);
    })
    .always(function(){
     $button.prop('disabled',false).text(text);

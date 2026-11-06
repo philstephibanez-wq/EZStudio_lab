@@ -163,9 +163,24 @@ BEGIN
     INSERT INTO global_queue_admission_outbox(job_id,state,updated_at)
     VALUES(NEW.id,'pending',NEW.created_at);
 END;
+CREATE TABLE IF NOT EXISTS global_queue_terminal_receipts (
+    job_id INTEGER PRIMARY KEY REFERENCES analysis_jobs(id),
+    global_job_id INTEGER NOT NULL,
+    terminal_state TEXT NOT NULL CHECK(terminal_state IN ('failed','cancelled'))
+);
 CREATE TRIGGER IF NOT EXISTS trg_global_queue_admission_fence_status
 BEFORE UPDATE OF status ON analysis_jobs
 WHEN OLD.dispatch_owner='orchestrator' AND NEW.status <> OLD.status
+ AND NOT (
+     OLD.status='queued' AND NEW.status IN ('failed','cancelled')
+     AND EXISTS (
+        SELECT 1 FROM global_queue_terminal_receipts proof
+        JOIN global_queue_admission_outbox o ON o.job_id=proof.job_id
+        WHERE proof.job_id=OLD.id AND o.state='admitted'
+          AND o.global_job_id=proof.global_job_id
+          AND proof.terminal_state=NEW.status
+     )
+ )
 BEGIN
     SELECT RAISE(ABORT,'global_queue_dispatch_fenced');
 END;
@@ -994,6 +1009,7 @@ SQL;
              FROM analysis_jobs
              WHERE song_id IN ($marks)
                AND status IN ('running','cancelling')
+               AND dispatch_owner='lab'
                AND updated_at <= ?
              ORDER BY id"
         );
@@ -1040,6 +1056,14 @@ SQL;
         if ($songIds === []) return [];
 
         $marks = implode(',', array_fill(0, count($songIds), '?'));
+        $ownerCheck = $this->pdo()->prepare(
+            "SELECT id FROM analysis_jobs WHERE song_id IN ($marks) AND dispatch_owner='orchestrator' AND status IN ('queued','running','cancelling') ORDER BY id LIMIT 1"
+        );
+        $ownerCheck->execute($songIds);
+        $globalId = $ownerCheck->fetchColumn();
+        if ($globalId !== false) {
+            throw new \RuntimeException('orchestrator_cancel_requires_global_protocol:job='.(int)$globalId);
+        }
         $pdo = $this->pdo();
         $now = gmdate('c');
 
@@ -1114,6 +1138,49 @@ SQL;
         return $stmt->fetchAll();
     }
 
+    /** Authorized terminal mirror; proof is transaction-local, never retained as a bypass. */
+    public function reconcileGlobalTerminal(int $labJobId, int $globalJobId, string $terminal): void
+    {
+        if ($labJobId < 1 || $globalJobId < 1 || !in_array($terminal,['failed','cancelled'],true)) {
+            throw new \DomainException('invalid_global_terminal_reconciliation');
+        }
+        $pdo = $this->pdo();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $stmt = $pdo->prepare('SELECT j.id,j.status,j.dispatch_owner,j.scientific_run_id,o.state AS admission_state,o.global_job_id,r.state AS scientific_state FROM analysis_jobs j JOIN global_queue_admission_outbox o ON o.job_id=j.id LEFT JOIN scientific_runs r ON r.id=j.scientific_run_id WHERE j.id=?');
+            $stmt->execute([$labJobId]);
+            $current = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!is_array($current) || $current['dispatch_owner'] !== 'orchestrator'
+                || $current['admission_state'] !== 'admitted'
+                || (int)$current['global_job_id'] !== $globalJobId
+                || (int)$current['scientific_run_id'] < 1) {
+                throw new \DomainException('global_terminal_identity_conflict');
+            }
+            $scienceTarget = $terminal === 'failed' ? 'error' : 'cancelled';
+            if ($current['status'] === $terminal && $current['scientific_state'] === $scienceTarget) {
+                $pdo->commit();
+                return;
+            }
+            if ($current['status'] !== 'queued' || $current['scientific_state'] !== 'queued') {
+                throw new \DomainException('global_terminal_local_state_conflict');
+            }
+            $proof = $pdo->prepare('INSERT INTO global_queue_terminal_receipts(job_id,global_job_id,terminal_state) VALUES(?,?,?)');
+            $proof->execute([$labJobId,$globalJobId,$terminal]);
+            $now = gmdate('c');
+            $update = $pdo->prepare("UPDATE analysis_jobs SET status=?,progress=0,error=?,updated_at=? WHERE id=? AND status='queued' AND dispatch_owner='orchestrator'");
+            $update->execute([$terminal, 'global_authoritative_'.$terminal,$now,$labJobId]);
+            if ($update->rowCount() !== 1) throw new \DomainException('global_terminal_update_conflict');
+            $runs = $pdo->prepare("UPDATE scientific_runs SET state=?,finished_at=? WHERE id=? AND state='queued'");
+            $runs->execute([$scienceTarget,$now,(int)$current['scientific_run_id']]);
+            if ($runs->rowCount() !== 1) throw new \DomainException('global_scientific_reconciliation_conflict');
+            $pdo->prepare('DELETE FROM global_queue_terminal_receipts WHERE job_id=?')->execute([$labJobId]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
     public function requestAnalysisJobCancellation(int $id): array
     {
         $job = $this->analysisJob($id);
@@ -1121,6 +1188,11 @@ SQL;
             throw new \RuntimeException('job_not_found');
         }
 
+        // Orchestrator is the sole authority for globally dispatched jobs.
+        // A local cancellation must not violate the SQLite owner fence.
+        if ((string)($job['dispatch_owner'] ?? 'lab') === 'orchestrator') {
+            throw new \RuntimeException('orchestrator_cancel_requires_global_protocol');
+        }
         $status = (string)$job['status'];
         if (!in_array($status, ['queued','running','cancelling'], true)) {
             return $job;
@@ -1206,6 +1278,9 @@ SQL;
         if ($job === null) {
             throw new \RuntimeException('job_not_found');
         }
+        if ((string)($job['dispatch_owner'] ?? 'lab') === 'orchestrator') {
+            throw new \RuntimeException('orchestrator_cancel_requires_global_protocol');
+        }
         if (!in_array((string)$job['status'], ['cancelling','cancelled'], true)) {
             throw new \RuntimeException('job_not_cancelling');
         }
@@ -1262,6 +1337,7 @@ SQL;
              FROM analysis_jobs
              WHERE song_id IN ($marks)
                AND status='cancelling'
+               AND dispatch_owner='lab'
                AND updated_at <= ?
              ORDER BY id"
         );
@@ -1455,6 +1531,14 @@ SQL);
         $songMarks = implode(',', array_fill(0, count($songIds), '?'));
         $phaseMarks = implode(',', array_fill(0, count($phases), '?'));
         $phaseExpr = $this->phaseKindSql('analysis_jobs');
+        $ownerCheck = $this->pdo()->prepare(
+            "SELECT id FROM analysis_jobs WHERE song_id IN ($songMarks) AND $phaseExpr IN ($phaseMarks) AND dispatch_owner='orchestrator' AND status IN ('queued','running','cancelling') ORDER BY id LIMIT 1"
+        );
+        $ownerCheck->execute([...$songIds, ...$phases]);
+        $globalId = $ownerCheck->fetchColumn();
+        if ($globalId !== false) {
+            throw new \RuntimeException('orchestrator_cancel_requires_global_protocol:job='.(int)$globalId);
+        }
         $pdo = $this->pdo();
         $now = gmdate('c');
         $cutoff = gmdate('c', time() - max(30, $staleSeconds));

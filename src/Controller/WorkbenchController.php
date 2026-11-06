@@ -167,11 +167,22 @@ final class WorkbenchController extends AbstractController
         int $id,
         Request $request,
         Database $db,
+        \App\Service\GlobalQueueTerminalSync $globalTerminalSync,
     ): Response {
         try {
-            $job = $db->requestAnalysisJobCancellation($id);
-        } catch (\RuntimeException $e) {
-            return new Response($e->getMessage(), 409);
+            $current = $db->analysisJob($id);
+            if ($current === null) throw new \DomainException('job_not_found');
+            if ((string)($current['dispatch_owner'] ?? 'lab') === 'orchestrator' && !$request->isXmlHttpRequest()) {
+                throw new \DomainException('ajax_origin_required');
+            }
+            $job = (string)($current['dispatch_owner'] ?? 'lab') === 'orchestrator'
+                ? $globalTerminalSync->cancelOrReconcile($id)
+                : $db->requestAnalysisJobCancellation($id);
+        } catch (\DomainException|\RuntimeException $e) {
+            $code = preg_match('/^[a-z0-9_]+$/D',$e->getMessage()) ? $e->getMessage() : 'job_cancellation_refused';
+            return $request->isXmlHttpRequest()
+                ? $this->json(['error'=>$code],409)
+                : new Response($code,409);
         }
 
         if ($request->isXmlHttpRequest()) {
