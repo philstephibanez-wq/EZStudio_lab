@@ -14,8 +14,12 @@ final class LabWebLegacyContractTest extends TestCase
         self::assertFileDoesNotExist($root.'/scripts/start.cmd');
         self::assertFileExists($root.'/public/router.php');
 
-        // The legacy PHP router and science environment remain together until audited.
-        self::assertFileExists($root.'/scripts/start.ps1');
+        // The LAB entry point remains; Orchestrator owns the lifecycle.
+        // LAB web must not depend on the retired standalone bootstrap script.
+        self::assertStringNotContainsString(
+            'scripts/start.ps1',
+            (string) file_get_contents($root.'/src/Service/GlobalQueueProfileBridge.php')
+        );
         self::assertFileExists($root.'/public/index.php');
 
         $ignore = (string) file_get_contents($root.'/.gitignore');

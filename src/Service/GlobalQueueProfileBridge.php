@@ -143,12 +143,7 @@ SQL);
         foreach ($_ENV as $key => $value) {
             if (is_string($key) && is_string($value)) $environment[$key] = $value;
         }
-        $environment['EZS_TARGET'] = 'lab';
-        $environment['EZS_EXPECTED_ROOT'] = realpath($project) ?: $project;
-        unset($environment['EZS_QUEUE_EXECUTOR_TOKEN'], $environment['EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'],
-            $environment['EZS_QUEUE_LAB_TOKEN']);
-        $environment['PYTHONUTF8'] = '1';
-        $environment['PYTHONIOENCODING'] = 'utf-8';
+        $environment = GlobalQueueProfileEnvironment::build($project, $environment);
         $pipes = [];
         $child = proc_open(
             [$pythonReal, $launcher, '--worker', $worker, '--job-file', $jobFile],
@@ -228,6 +223,21 @@ SQL);
             if ($exit < 0) $exit = $closeCode;
         }
         if ($exit !== 0) {
+            // Keep the actual child exception on LAB only. Never log credentials or expose it via HTTP.
+            $diagnosticLog = $project.'/var/logs/jobs/job-'.sprintf('%08d', $labJobId).'-bridge.log';
+            $diagnosticDirectory = dirname($diagnosticLog);
+            if (is_dir($diagnosticDirectory) || @mkdir($diagnosticDirectory, 0700, true)) {
+                $diagnosticText = substr($log, -65536);
+                foreach ([$token, self::setting('EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'),
+                    self::setting('EZS_QUEUE_LAB_TOKEN')] as $secret) {
+                    if (is_string($secret) && strlen($secret) >= 8) {
+                        $diagnosticText = str_replace($secret, '[REDACTED]', $diagnosticText);
+                    }
+                }
+                @file_put_contents($diagnosticLog,
+                    gmdate('c').' lab_job_id='.$labJobId.' exit_code='.$exit."\n".$diagnosticText."\n",
+                    FILE_APPEND | LOCK_EX);
+            }
             // The Job Object launcher has exited: no surviving scientific child
             // may be inferred from the process return code alone on other paths.
             // Persist LAB failure first, then attest it to the canonical queue.
