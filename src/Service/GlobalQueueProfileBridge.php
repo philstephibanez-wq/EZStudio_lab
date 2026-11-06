@@ -228,8 +228,27 @@ SQL);
             if ($exit < 0) $exit = $closeCode;
         }
         if ($exit !== 0) {
-            // No failure receipt exists in LAB 1.6a3. Preserve the lease and evidence.
-            throw new \RuntimeException('profile_worker_failed_lease_retained_exit_'.$exit);
+            // The Job Object launcher has exited: no surviving scientific child
+            // may be inferred from the process return code alone on other paths.
+            // Persist LAB failure first, then attest it to the canonical queue.
+            $this->profile->failFromJob($labJobId, 'profile_worker_exit_'.$exit);
+            $receipt = $this->receipt->failedProfile(
+                $labJobId, $job['global_job_id'], $generation
+            );
+            $ack = $this->request('finish', [
+                'job_id' => $job['global_job_id'], 'claim_generation' => $generation,
+                'lease_token' => $lease, 'receipt' => $receipt,
+            ], $token);
+            if (($ack['state'] ?? null) !== 'failed'
+                || (int) ($ack['job_id'] ?? 0) !== $job['global_job_id']) {
+                throw new \RuntimeException('global_failure_finish_ack_missing_lease_retained');
+            }
+            return [
+                'lab_job_id' => $labJobId,
+                'global_job_id' => $job['global_job_id'],
+                'state' => 'failed',
+                'analysis_returncode' => $exit,
+            ];
         }
         // Persist through the unchanged LAB scientific service, not a new code path.
         $this->profile->completeFromJob($labJobId);

@@ -22,7 +22,7 @@ final class ProfileQueueJobHandler
         // Exactly the existing canonically fenced Orchestrator claim and PROFILE worker.
         // When the global GPU slot is occupied, runOne returns 'waiting_gpu', no spawn.
         $result = $this->bridge->runOne($job->labJobId, $python);
-        if (!in_array($result['state'] ?? '', ['completed','waiting_gpu'], true)) {
+        if (!in_array($result['state'] ?? '', ['completed','failed','waiting_gpu'], true)) {
             throw new \RuntimeException('profile_bridge_unexpected_result');
         }
     }

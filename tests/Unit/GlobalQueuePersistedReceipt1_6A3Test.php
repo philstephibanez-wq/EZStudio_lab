@@ -124,7 +124,7 @@ SQL);
         $signer->completedProfile($this->labJob, $this->globalJob, 1);
     }
 
-    public function testPendingAdmissionAndMissingKeyCannotIssueReceipt(): void
+    public function testPendingAdmissionAndInvalidKeyCannotIssueReceipt(): void
     {
         $this->persist();
         $signer = new GlobalQueuePersistedReceipt($this->db);
@@ -136,7 +136,7 @@ SQL);
         } catch (\DomainException $e) {
             self::assertSame('profile_persistence_not_attested', $e->getMessage());
         }
-        putenv('EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY');
+        putenv('EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY=invalid');
         unset($_SERVER['EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'], $_ENV['EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY']);
         $this->expectExceptionMessage('persistence_attestation_not_configured');
         $signer->completedProfile($this->labJob, $this->globalJob, 1);

@@ -102,6 +102,59 @@ SQL);
         return $receipt;
     }
 
+    /**
+     * Failure receipt is only issued after LAB has persistently recorded the
+     * scientific error. It cannot attest an arbitrary process exit by itself.
+     */
+    public function failedProfile(int $labJobId, int $globalJobId, int $claimGeneration): array
+    {
+        if ($labJobId < 1 || $globalJobId < 1 || $claimGeneration < 1) {
+            throw new \InvalidArgumentException('invalid_receipt_identity');
+        }
+        $key = self::attestationKey();
+        if (strlen($key) < 32 || strlen($key) > 256) {
+            throw new \RuntimeException('persistence_attestation_not_configured');
+        }
+        $stmt = $this->db->pdo()->prepare(<<<'SQL'
+SELECT j.id,j.kind,j.status,j.dispatch_owner,j.scientific_run_id,
+       o.state AS admission_state,o.global_job_id,
+       r.item AS run_item,r.state AS run_state
+FROM analysis_jobs j
+JOIN global_queue_admission_outbox o ON o.job_id=j.id
+JOIN scientific_runs r ON r.id=j.scientific_run_id
+WHERE j.id=?
+SQL);
+        $stmt->execute([$labJobId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!is_array($row)
+            || $row['dispatch_owner'] !== 'orchestrator'
+            || $row['kind'] !== 'profile'
+            || $row['status'] !== 'queued'
+            || $row['admission_state'] !== 'admitted'
+            || (int) $row['global_job_id'] !== $globalJobId
+            || (int) $row['scientific_run_id'] < 1
+            || $row['run_item'] !== 'profile'
+            || $row['run_state'] !== 'error') {
+            throw new \DomainException('profile_failure_not_attested');
+        }
+        $receipt = [
+            'schema' => 'ezs.lab.persisted-result.v1',
+            'producer' => 'lab',
+            'external_id' => 'analysis_job:'.$labJobId,
+            'job_id' => $globalJobId,
+            'claim_generation' => $claimGeneration,
+            'result' => 'failed',
+            'artifact_sha256' => null,
+        ];
+        $canonical = implode("\n", [
+            $receipt['schema'], $receipt['producer'], $receipt['external_id'],
+            (string) $globalJobId, (string) $claimGeneration,
+            'failed', '-',
+        ]);
+        $receipt['signature'] = hash_hmac('sha256', $canonical, $key);
+        return $receipt;
+    }
+
     private static function attestationKey(): string
     {
         foreach ([getenv('EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'),
