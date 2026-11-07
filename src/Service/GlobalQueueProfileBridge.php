@@ -280,7 +280,8 @@ SQL);
         foreach ([getenv($name), $_SERVER[$name] ?? null, $_ENV[$name] ?? null] as $value) {
             if (is_string($value) && $value !== '') return $value;
         }
-        return '';
+        return $name === 'EZS_QUEUE_EXECUTOR_TOKEN'
+            ? GlobalQueueAdmission::localSetting($name) : '';
     }
 
     /** Observe the child independently of proc_open's PID declaration. */

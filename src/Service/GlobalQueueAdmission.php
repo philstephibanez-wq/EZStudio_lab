@@ -56,7 +56,7 @@ final class GlobalQueueAdmission
     /** Read only explicitly allowlisted LAB settings; no generic dotenv import. */
     public static function localSetting(string $key): string
     {
-        if (!in_array($key, ['EZSTUDIO_GLOBAL_QUEUE_ADMISSION', 'EZS_QUEUE_LAB_TOKEN', 'EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'], true)) return '';
+        if (!in_array($key, ['EZSTUDIO_GLOBAL_QUEUE_ADMISSION', 'EZS_QUEUE_LAB_TOKEN', 'EZS_QUEUE_EXECUTOR_TOKEN', 'EZS_QUEUE_LAB_RESULT_ATTESTATION_KEY'], true)) return '';
         $path = dirname(__DIR__, 2).'/.env.local';
         if (!is_file($path) || is_link($path)) return '';
         $lines = @file($path, FILE_IGNORE_NEW_LINES);

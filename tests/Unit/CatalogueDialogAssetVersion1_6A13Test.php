@@ -17,8 +17,8 @@ final class CatalogueDialogAssetVersion1_6A13Test extends TestCase
         $version = trim((string) file_get_contents($root.'/VERSION'));
         self::assertIsString($base);
         self::assertIsString($js);
-        self::assertSame('1.6a17', $version, 'Test valid only for the installed LAB release');
-        self::assertStringContainsString('/js/ezstudio-lab.js?v='.$version, $base);
+        self::assertMatchesRegularExpression('/^\\d+\\.\\d+[a-z]+\\d+$/', $version);
+        self::assertStringContainsString('/js/ezstudio-lab.js?v={{ lab_version|url_encode }}', $base);
         self::assertStringNotContainsString('/js/ezstudio-lab.js?v=r3b29a', $base);
         self::assertStringContainsString('catalogQueueError(', $js);
         self::assertStringContainsString('window.HTMLDialogElement', $js);

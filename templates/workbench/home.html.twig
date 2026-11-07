@@ -91,11 +91,25 @@
       {% elseif s.state == 'cancelled' or s.job_status == 'cancelled' %}
         <span class="badge">Annulé</span>
       {% elseif s.state == 'error' %}
-        <span class="badge warn">Erreur</span>
+        <span class="badge error">Erreur</span>
       {% elseif s.state == 'configured' %}
         <span class="badge">Configuré</span>
       {% else %}
         <span class="badge">—</span>
+      {% endif %}
+      {% if key == 'profile' and s.latest_attempt is defined and s.latest_attempt is not null %}
+        {% set attempt = s.latest_attempt %}
+        {% if attempt.state == 'error' %}
+          <div class="catalog-attempt"><span class="badge error">Dernier essai : erreur</span></div>
+        {% elseif attempt.state == 'cancelled' %}
+          <div class="catalog-attempt"><span class="badge">Dernier essai : annulé</span></div>
+        {% elseif attempt.state == 'queued' %}
+          <div class="catalog-attempt"><span class="badge" data-analysis-active="1">Dernier essai : en attente</span>
+          {% if attempt.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:attempt.job_id}) }}" data-job-id="{{ attempt.job_id }}" title="Annuler le job #{{ attempt.job_id }}">■</button>{% endif %}</div>
+        {% elseif attempt.state == 'running' %}
+          <div class="catalog-attempt"><span class="badge warn" data-analysis-active="1">Dernier essai : en cours</span>
+          {% if attempt.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:attempt.job_id}) }}" data-job-id="{{ attempt.job_id }}" title="Annuler le job #{{ attempt.job_id }}">■</button>{% endif %}</div>
+        {% endif %}
       {% endif %}
     </td>
   {% endfor %}

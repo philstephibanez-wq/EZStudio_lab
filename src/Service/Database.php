@@ -1161,7 +1161,8 @@ SQL;
                 $pdo->commit();
                 return;
             }
-            if ($current['status'] !== 'queued' || $current['scientific_state'] !== 'queued') {
+            if ($current['status'] !== 'queued'
+                || !in_array($current['scientific_state'], ['queued', $scienceTarget], true)) {
                 throw new \DomainException('global_terminal_local_state_conflict');
             }
             $proof = $pdo->prepare('INSERT INTO global_queue_terminal_receipts(job_id,global_job_id,terminal_state) VALUES(?,?,?)');
@@ -1170,9 +1171,13 @@ SQL;
             $update = $pdo->prepare("UPDATE analysis_jobs SET status=?,progress=0,error=?,updated_at=? WHERE id=? AND status='queued' AND dispatch_owner='orchestrator'");
             $update->execute([$terminal, 'global_authoritative_'.$terminal,$now,$labJobId]);
             if ($update->rowCount() !== 1) throw new \DomainException('global_terminal_update_conflict');
-            $runs = $pdo->prepare("UPDATE scientific_runs SET state=?,finished_at=? WHERE id=? AND state='queued'");
-            $runs->execute([$scienceTarget,$now,(int)$current['scientific_run_id']]);
-            if ($runs->rowCount() !== 1) throw new \DomainException('global_scientific_reconciliation_conflict');
+            // A scientific run may already carry the matching terminal result.
+            // Preserve its finished_at and never rewrite or reinterpret its evidence.
+            if ($current['scientific_state'] === 'queued') {
+                $runs = $pdo->prepare("UPDATE scientific_runs SET state=?,finished_at=? WHERE id=? AND state='queued'");
+                $runs->execute([$scienceTarget,$now,(int)$current['scientific_run_id']]);
+                if ($runs->rowCount() !== 1) throw new \DomainException('global_scientific_reconciliation_conflict');
+            }
             $pdo->prepare('DELETE FROM global_queue_terminal_receipts WHERE job_id=?')->execute([$labJobId]);
             $pdo->commit();
         } catch (\Throwable $e) {

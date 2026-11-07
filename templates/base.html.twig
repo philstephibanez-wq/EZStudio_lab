@@ -31,6 +31,7 @@ header{background:#1e2227;color:#fff;border-bottom:1px solid #000}
 .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;background:var(--off)}
 .badge.ok{background:var(--ok)}
 .badge.warn{background:var(--warn)}
+.badge.error{background:#a32135;color:#fff}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
 label{display:flex;flex-direction:column;gap:5px;font-size:13px}
 input,select,button{font:inherit;padding:8px}
@@ -151,7 +152,7 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 
   <script src="/vendor/jquery/jquery-4.0.0.min.js"></script>
   <script src="/vendor/jquery-ui/jquery-ui-1.14.2.min.js"></script>
-  <script src="/js/ezstudio-lab.js?v=1.6a17"></script>
+  <script src="/js/ezstudio-lab.js?v={{ lab_version|url_encode }}"></script>
   {% if app.environment == 'dev' and app.request.host in ['127.0.0.1', 'localhost'] %}<script src="/js/ezstudio-queue-debug.js?v=1.6a14"></script>{% endif %}
 </body>
 </html>

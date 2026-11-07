@@ -26,8 +26,12 @@ final class ExecuteProfileGlobalQueueCommand extends Command
     {
         $id = (string)$input->getArgument('lab-job-id');
         if (!preg_match('/^[1-9][0-9]*$/D', $id)) return Command::INVALID;
+        // LAB chooses its own interpreter; Orchestrator passes only the job reference.
         $python = getenv('EZSTUDIO_PROFILE_PYTHON')
-            ?: ($_SERVER['EZSTUDIO_PROFILE_PYTHON'] ?? $_ENV['EZSTUDIO_PROFILE_PYTHON'] ?? '');
+            ?: ($_SERVER['EZSTUDIO_PROFILE_PYTHON'] ?? $_ENV['EZSTUDIO_PROFILE_PYTHON'] ?? '')
+            ?: getenv('EZSTUDIO_PYTHON')
+            ?: ($_SERVER['EZSTUDIO_PYTHON'] ?? $_ENV['EZSTUDIO_PYTHON'] ?? '')
+            ?: 'H:/Python/pythoncore-3.14-64/python.exe';
         if (!is_string($python) || !is_file($python)) {
             $output->writeln('<error>PROFILE_PYTHON_UNAVAILABLE</error>');
             return Command::FAILURE;

@@ -48,10 +48,24 @@ final class CatalogService
             );
 
             foreach (self::ITEMS as $item) {
-                $group[$item] = $this->latestScientificState(
+                $lastAttempt = $this->latestScientificState(
                     $group['song_ids'],
                     $item
                 );
+                $group[$item] = $lastAttempt;
+                // Availability and latest attempt are independent dimensions.
+                // Never hide a completed PROFILE because a newer try failed.
+                if ($item === 'profile') {
+                    $available = $this->latestScientificState(
+                        $group['song_ids'], $item, true
+                    );
+                    if ($available['state'] === 'done') {
+                        $group[$item] = $available;
+                        $group[$item]['latest_attempt'] =
+                            $lastAttempt['run_id'] !== $available['run_id']
+                            ? $lastAttempt : null;
+                    }
+                }
             }
 
             // PROFILE R3E: computed from the latest active PROFILE run only.
@@ -862,7 +876,7 @@ final class CatalogService
         ];
     }
 
-    private function latestScientificState(array $songIds, string $item): array
+    private function latestScientificState(array $songIds, string $item, bool $completedOnly = false): array
     {
         if (!$this->tableExists('scientific_runs') || $songIds === []) {
             return $this->emptyState();
@@ -875,13 +889,15 @@ final class CatalogService
              WHERE song_id IN ($marks)
                AND item=?
                AND state!='abandoned'
+               AND (? = 0 OR state='done')
              ORDER BY id DESC LIMIT 1"
         );
         $i = 1;
         foreach ($songIds as $id) {
             $stmt->bindValue($i++, $id, PDO::PARAM_INT);
         }
-        $stmt->bindValue($i, $item, PDO::PARAM_STR);
+        $stmt->bindValue($i++, $item, PDO::PARAM_STR);
+        $stmt->bindValue($i, $completedOnly ? 1 : 0, PDO::PARAM_INT);
         $stmt->execute();
         $run = $stmt->fetch();
 
@@ -933,7 +949,7 @@ final class CatalogService
         }
 
         return [
-            'state' => $viewState,
+            'state' => $completedOnly ? 'done' : $viewState,
             'progress' => $job !== null ? (int)$job['progress'] : $progress,
             'run_id' => (int)$run['id'],
             'public_id' => (string)$run['public_id'],
