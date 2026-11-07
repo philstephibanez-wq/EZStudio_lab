@@ -135,6 +135,8 @@ SQL);
             throw new \RuntimeException('job_envelope_directory_missing');
         }
         $jobFile = $jobDir.'/job.json';
+        // The canonical Python worker requires an explicit envelope target, not only EZS_TARGET.
+        $context['target'] = 'lab';
         if (file_put_contents($jobFile, json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) === false) {
             throw new \RuntimeException('job_envelope_write_failed');
         }
