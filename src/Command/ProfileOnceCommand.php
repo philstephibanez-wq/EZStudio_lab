@@ -16,8 +16,8 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
 
-/** One analysis, one process, no Messenger, no global admissions, no local scheduler. */
-#[AsCommand(name: 'lab:profile:once', description: 'Analyse PROFILE directe, sans FIFO')]
+/** Canonical scientific execution; only the local dispatcher may claim queued jobs. */
+#[AsCommand(name: 'lab:profile:once', description: 'Exécuter un job PROFILE déjà admis dans la queue locale')]
 final class ProfileOnceCommand extends Command
 {
     public function __construct(
@@ -32,13 +32,26 @@ final class ProfileOnceCommand extends Command
     protected function configure(): void
     {
         $this->addOption('song-id', null, InputOption::VALUE_REQUIRED, 'ID de chanson LAB existante');
+        $this->addOption('job-id', null, InputOption::VALUE_REQUIRED, 'Job PROFILE local préalablement admis');
         $this->addOption('python', null, InputOption::VALUE_REQUIRED, 'Python PROFILE (chemin absolu)');
-        $this->addOption('apply', null, InputOption::VALUE_NONE, 'Créer UNE nouvelle analyse et exécuter directement Python');
+        $this->addOption('apply', null, InputOption::VALUE_NONE, 'Exécuter le job en queue après claim atomique');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $id = filter_var($input->getOption('song-id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $queuedJob = null;
+        $requestedJob = $input->getOption('job-id');
+        if ($requestedJob !== null) {
+            $jobId = filter_var($requestedJob, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($jobId === false || $jobId === null) return Command::INVALID;
+            $queuedJob = $this->database->analysisJob((int)$jobId);
+            if (!$queuedJob || (string)$queuedJob['kind'] !== 'profile'
+                || (string)($queuedJob['dispatch_owner'] ?? '') !== 'lab') {
+                $output->writeln('<error>PROFILE_QUEUED_JOB_NOT_FOUND</error>');
+                return Command::FAILURE;
+            }
+        }
+        $id = $queuedJob ? (int)$queuedJob['song_id'] : filter_var($input->getOption('song-id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($id === false || $id === null) {
             $output->writeln('<error>PROFILE_ONCE_SONG_ID_REQUIRED</error>');
             return Command::INVALID;
@@ -66,8 +79,12 @@ final class ProfileOnceCommand extends Command
             $output->writeln('READ_ONLY_NO_JOB_CREATED');
             return Command::SUCCESS;
         }
+        if ($queuedJob === null) {
+            $output->writeln('<error>PROFILE_QUEUE_REQUIRED</error>');
+            return Command::FAILURE;
+        }
 
-        // One-shot mutual exclusion is a lock, not a job queue. Never adopt an older job.
+        // Execution is the same proven one-shot engine, but admission is FIFO.
         $lockDir = $root.'/var/runtime';
         if (!is_dir($lockDir) && !mkdir($lockDir, 0700, true) && !is_dir($lockDir)) {
             throw new \RuntimeException('profile_once_lock_dir_missing');
@@ -86,13 +103,34 @@ final class ProfileOnceCommand extends Command
                 $output->writeln('<error>PROFILE_ONCE_LAB_ALREADY_RUNNING</error>');
                 return Command::FAILURE;
             }
-            $run = $this->runs->createRun(
-                (int)$song['id'], 'profile',
-                ['name'=>'ezstudio-profile-modules','version'=>'r3b31','model'=>'multi-engine-profile-modules'],
-                ['audio_sha256'=>(string)$song['audio_sha256'], 'output_contract'=>'ezstudio.profile.v1', 'automatic_next_stage'=>false]
-            );
-            $created = $this->profile->beginOneShot((int)$run['id'], $source, (string)$song['audio_sha256']);
-            $jobId = (int)$created['job_id'];
+            if ($queuedJob === null) {
+                $output->writeln('<error>PROFILE_QUEUE_REQUIRED</error>');
+                return Command::FAILURE;
+            }
+            // Claim the single canonical head within an IMMEDIATE transaction.
+            $pdo = $this->database->pdo();
+            $pdo->exec('BEGIN IMMEDIATE');
+            try {
+                $head = $pdo->query(\App\Service\LocalProfileQueue::headSql())->fetch(\PDO::FETCH_ASSOC);
+                $busy = (int)$pdo->query(\App\Service\LocalProfileQueue::activeSql())->fetchColumn();
+                if (!$head || (int)$head['id'] !== (int)$queuedJob['id'] || $busy > 0) {
+                    $pdo->commit();
+                    $output->writeln('<error>PROFILE_QUEUE_NOT_HEAD_OR_ACTIVE</error>');
+                    return Command::FAILURE;
+                }
+                $stmt = $pdo->prepare("UPDATE analysis_jobs SET status='running',progress=1,updated_at=? WHERE id=? AND status='queued' AND kind='profile' AND dispatch_owner='lab'");
+                $stmt->execute([gmdate('c'),(int)$queuedJob['id']]);
+                if ($stmt->rowCount() !== 1) throw new \RuntimeException('profile_queue_claim_conflict');
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            $jobId = (int)$queuedJob['id'];
+            $run = $this->runs->run((int)$queuedJob['scientific_run_id']);
+            if (!$run || (string)$run['item'] !== 'profile') throw new \RuntimeException('profile_queue_run_invalid');
+            $this->runs->setState((int)$run['id'], 'running');
+            $this->runs->setLabel((int)$run['id'], 'progress', '1');
             $context = $this->database->analysisJobContext($jobId);
             $context['target'] = 'lab';
             $runtime = $root.'/var/tmp/profile-once/'.$jobId;

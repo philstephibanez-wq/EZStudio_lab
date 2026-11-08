@@ -7,7 +7,7 @@ namespace App\Service;
 final class ProfileAiRequestService
 {
     private const KIND = 'assistant.profile.review';
-    public function __construct(private readonly Database $db) {}
+    public function __construct(private readonly Database $db, private readonly ?LocalProfileQueue $localQueue = null) {}
 
     private function pdo(): \PDO { return $this->db->pdo(); }
 
@@ -44,8 +44,8 @@ final class ProfileAiRequestService
             $now=gmdate('c');
             // Reuse an existing logical job; never create duplicates for the same run.
             if ($current) {
-                $pdo->prepare("UPDATE analysis_jobs SET status='queued',progress=0,error=NULL,updated_at=? WHERE id=?")
-                    ->execute([$now,(int)$current['job_id']]);
+                $pdo->prepare("UPDATE analysis_jobs SET status='queued',progress=0,error=NULL,created_at=?,updated_at=? WHERE id=?")
+                    ->execute([$now,$now,(int)$current['job_id']]);
             } else {
                 $req=json_encode(['phase'=>'profile','scientific_run_id'=>$runId,'processor'=>'qwen','schema'=>'ezs.assistant.profile.job.v1'],JSON_UNESCAPED_UNICODE);
                 $pdo->prepare('INSERT INTO analysis_jobs(run_id,scientific_run_id,song_id,source_path,kind,status,progress,request_json,error,created_at,updated_at) VALUES(NULL,?,?,?, ?,\'queued\',0,?,NULL,?,?)')
@@ -140,7 +140,13 @@ SQL);
     {
         $this->migrateLegacy();
         if ($this->maintenance('status')['maintenance']) return [];
-        $rows=$this->pdo()->query("SELECT id AS job_id,scientific_run_id AS run_id,status,updated_at FROM analysis_jobs WHERE kind='assistant.profile.review' AND status='queued' ORDER BY created_at ASC,id ASC LIMIT 20")->fetchAll(\PDO::FETCH_ASSOC);
+        // Shared FIFO: never advertise an Assistant job before an earlier PROFILE.
+        if ((int)$this->pdo()->query(LocalProfileQueue::activeSql())->fetchColumn() > 0) return [];
+        $head=$this->pdo()->query(LocalProfileQueue::headSql())->fetch(\PDO::FETCH_ASSOC);
+        if (!$head || (string)$head['kind'] !== self::KIND) return [];
+        $stmt=$this->pdo()->prepare("SELECT id AS job_id,scientific_run_id AS run_id,status,updated_at FROM analysis_jobs WHERE id=? AND kind=? AND status='queued'");
+        $stmt->execute([(int)$head['id'],self::KIND]);
+        $rows=$stmt->fetchAll(\PDO::FETCH_ASSOC);
         return array_map(static function(array $r): array {$r['run_id']=(int)$r['run_id'];$r['job_id']=(int)$r['job_id'];return $r;},$rows);
     }
 
@@ -153,8 +159,14 @@ SQL);
             if ((bool)$pdo->query('SELECT paused FROM profile_ai_maintenance WHERE id=1')->fetchColumn()) {
                 $pdo->commit(); return false;
             }
-            $stmt=$pdo->prepare("UPDATE analysis_jobs SET status='running',progress=1,error=NULL,updated_at=? WHERE scientific_run_id=? AND kind=? AND status='queued'");
-            $stmt->execute([gmdate('c'),$runId,self::KIND]);
+            $head=$pdo->query(LocalProfileQueue::headSql())->fetch(\PDO::FETCH_ASSOC);
+            $busy=(int)$pdo->query(LocalProfileQueue::activeSql())->fetchColumn();
+            if (!$head || (string)$head['kind'] !== self::KIND
+                || (int)$head['scientific_run_id'] !== $runId || $busy > 0) {
+                $pdo->commit(); return false;
+            }
+            $stmt=$pdo->prepare("UPDATE analysis_jobs SET status='running',progress=1,error=NULL,updated_at=? WHERE id=? AND scientific_run_id=? AND kind=? AND status='queued'");
+            $stmt->execute([gmdate('c'),(int)$head['id'],$runId,self::KIND]);
             $claimed=$stmt->rowCount()===1;
             $pdo->commit();
             return $claimed;
@@ -170,6 +182,9 @@ SQL);
         $stmt=$this->pdo()->prepare("UPDATE analysis_jobs SET status=?,progress=?,error=?,updated_at=? WHERE scientific_run_id=? AND kind=? AND status='running'");
         $stmt->execute([$status,$status==='completed'?100:0,mb_substr($message,0,1000),gmdate('c'),$runId,self::KIND]);
         if ($stmt->rowCount()!==1) throw new \RuntimeException('request_not_running');
+        // Schedule the next local PROFILE job, if the FIFO head now permits it.
+        try { $this->localQueue?->wake(); }
+        catch (\Throwable) { /* durable queued jobs remain; operator can run lab:profile:drain */ }
         return $this->latest($runId) ?? throw new \RuntimeException('result_not_found');
     }
 

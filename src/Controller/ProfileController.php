@@ -226,7 +226,7 @@ SQL);
 
     /** Request cancellation of this LAB one-shot only. Never kill a PID from a request. */
     #[Route('/profile/oneshot/{id<\d+>}/cancel', name: 'profile_once_cancel', methods: ['POST'])]
-    public function cancelOneShot(int $id, Request $request, \App\Service\Database $db): Response
+    public function cancelOneShot(int $id, Request $request, \App\Service\Database $db, \App\Service\LocalProfileQueue $queue): Response
     {
         $origin = (string)$request->headers->get('Origin', '');
         $site = (string)$request->headers->get('Sec-Fetch-Site', '');
@@ -240,6 +240,13 @@ SQL);
             || (string)($job['dispatch_owner'] ?? '') !== 'lab'
             || (int)($job['scientific_run_id'] ?? 0) <= 0) {
             return $this->json(['ok'=>false, 'reason'=>'not_local_profile'], 404);
+        }
+        if ((string)$job['status'] === 'queued') {
+            $updated = $db->requestAnalysisJobCancellation($id);
+            try { $queue->wake(); }
+            catch (\Throwable $error) { error_log('profile_queue_cancel_wake: '.$error->getMessage()); }
+            return $this->json(['ok'=>true, 'job_id'=>$id, 'state'=>(string)$updated['status'],
+                'message'=>'Job retiré de la file avant exécution.'],202,['Cache-Control'=>'no-store']);
         }
         if (!in_array((string)$job['status'], ['running','cancelling'], true)) {
             return $this->json(['ok'=>false, 'reason'=>'job_not_active'], 409);
@@ -263,69 +270,33 @@ SQL);
             'message'=>'Annulation demandée ; arrêt du worker non encore confirmé.',
         ], 202, ['Cache-Control'=>'no-store']);
     }
-    /** Start the CLI one-shot in a DETACHED OS process, never in the HTTP request. */
+    /** Admission commune : une chanson devient un job FIFO, sans exécution PHP HTTP. */
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['GET','POST'])]
-    public function analyze(Request $request, WorkbenchCatalog $catalog, \App\Service\Database $database): Response
+    public function analyze(Request $request, \App\Service\LocalProfileQueue $queue): Response
     {
-        if ($request->isMethod('GET')) {
-            return new RedirectResponse($this->generateUrl('workbench_profile'));
-        }
-        // Same-origin form only: no externally forgeable analysis launch.
-        $site = (string)$request->headers->get('Sec-Fetch-Site', '');
-        $origin = (string)$request->headers->get('Origin', '');
-        $referer = (string)$request->headers->get('Referer', '');
+        if ($request->isMethod('GET')) return new RedirectResponse($this->generateUrl('workbench_profile'));
+        $site = (string)$request->headers->get('Sec-Fetch-Site','');
+        $origin = (string)$request->headers->get('Origin','');
+        $referer = (string)$request->headers->get('Referer','');
         $base = $request->getSchemeAndHttpHost();
-        if (($site !== '' && $site !== 'same-origin')
-            || ($origin !== '' && $origin !== $base)
-            || ($site === '' && $origin === '' && !str_starts_with($referer, $base.'/'))) {
-            return new Response('Origine du formulaire refusée.', 403);
+        if (($site !== '' && $site !== 'same-origin') || ($origin !== '' && $origin !== $base)
+            || ($site === '' && $origin === '' && !str_starts_with($referer,$base.'/'))) {
+            return new Response('Origine du formulaire refusée.',403);
         }
         $songId = filter_var($request->request->get('song'), FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
-        if ($songId === false || $songId === null) return new Response('Chanson invalide.', 400);
-        $song = $catalog->selectedSong((int)$songId);
-        if (!$song || !in_array((int)$songId, array_map('intval', $song['song_ids'] ?? [(int)$song['id']]), true)) {
-            return new Response('Chanson introuvable.', 404);
+        if ($songId === false || $songId === null) return new Response('Chanson invalide.',400);
+        try {
+            $created = $queue->enqueue((int)$songId);
+            $queue->wake();
+        } catch (\DomainException $error) {
+            return new Response($error->getMessage(),409);
+        } catch (\Throwable $error) {
+            return new Response('Admission conservée ou refusée ; vérifier la queue locale et les journaux : '.$error->getMessage(),500);
         }
-        if ($catalog->sourcePath($song) === null) return new Response('Source IMPORT indisponible.', 409);
-        // Refuse a second direct launch while another LAB job already runs.
-        if ((int)$database->pdo()->query("SELECT COUNT(*) FROM analysis_jobs WHERE status='running'")->fetchColumn() > 0) {
-            return new Response('Une analyse LAB est déjà en cours.', 409);
-        }
-        $previousJobId = (int)$database->pdo()->query(
-            'SELECT COALESCE(MAX(id),0) FROM analysis_jobs'
-        )->fetchColumn();
-        $root = dirname(__DIR__, 2);
-        $logDir = $root.'/var/logs/profile-once';
-        if (!is_dir($logDir) && !mkdir($logDir, 0700, true) && !is_dir($logDir)) {
-            return new Response('Répertoire de journal indisponible.', 500);
-        }
-        $marker = gmdate('Ymd_His').'_'.bin2hex(random_bytes(3));
-        $stdout = $logDir.'/'.$marker.'.out.log';
-        $stderr = $logDir.'/'.$marker.'.err.log';
-        // A trusted integer is the ONLY value interpolated into the PowerShell process.
-        // Start-Process detaches the CLI: FastCGI is NOT blocked by multi-minute science.
-        $script = '$ErrorActionPreference = "Stop"; '
-            .'$php = (Get-Command php.exe -ErrorAction Stop).Source; '
-            .'$p = Start-Process -FilePath $php '
-            .'-ArgumentList "bin/console lab:profile:once --song-id='.(int)$songId.' --apply" '
-            .'-WorkingDirectory "H:/EZStudio_lab" '
-            .'-RedirectStandardOutput "'.str_replace('\\', '/', $stdout).'" '
-            .'-RedirectStandardError "'.str_replace('\\', '/', $stderr).'" '
-            .'-PassThru; '
-            .'if (!$p -or $p.Id -lt 1) { throw "profile_once_spawn_failed" }; '
-            .'Write-Output ("PROFILE_ONESHOT_SPAWNED_PID=" + $p.Id)';
-        $launcher = new \Symfony\Component\Process\Process(
-            ['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',$script],
-            $root
-        );
-        $launcher->setTimeout(20);
-        try { $launcher->run(); }
-        catch (\Throwable $e) { return new Response('Démarrage one-shot impossible : '.$e->getMessage(), 500); }
-        if (!$launcher->isSuccessful() || !str_contains($launcher->getOutput(), 'PROFILE_ONESHOT_SPAWNED_PID=')) {
-            return new Response('Démarrage one-shot refusé. Vérifier PHP CLI et les journaux LAB.', 500);
-        }
+        $previousJobId = max(0, $created['job_id'] - 1);
         return new RedirectResponse($this->generateUrl('workbench_profile', [
             'song'=>(int)$songId, 'oneshot'=>'started', 'after_job'=>$previousJobId,
         ]));
     }
+
 }

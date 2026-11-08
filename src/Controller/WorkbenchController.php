@@ -49,9 +49,38 @@ final class WorkbenchController extends AbstractController
     }
 
     #[Route('/profile/analyze-all', name: 'profile_analyze_all', methods: ['POST'])]
-    public function analyzeAllProfiles(): Response
+    public function analyzeAllProfiles(Request $request, \App\Service\LocalProfileQueue $queue, WorkbenchCatalog $catalog): Response
     {
-        return new Response('Analyse en lot désactivée. PROFILE est exclusivement one-shot.', 409);
+        $site = (string)$request->headers->get('Sec-Fetch-Site','');
+        $origin = (string)$request->headers->get('Origin','');
+        $referer = (string)$request->headers->get('Referer','');
+        $base = $request->getSchemeAndHttpHost();
+        if (($site !== '' && $site !== 'same-origin') || ($origin !== '' && $origin !== $base)
+            || ($site === '' && $origin === '' && !str_starts_with($referer,$base.'/'))) {
+            return new Response('Origine du formulaire refusée.',403);
+        }
+        $queued = 0; $skippedActive = 0; $skippedMissingSource = 0;
+        foreach ($catalog->songs() as $song) {
+            try {
+                $result = $queue->enqueue((int)$song['id']);
+                if ($result['created']) ++$queued;
+                else ++$skippedActive;
+            } catch (\DomainException) {
+                ++$skippedMissingSource;
+            }
+        }
+        // Only after admission: one dispatcher for all jobs.
+        if ($queued > 0) {
+            try { $queue->wake(); }
+            catch (\Throwable $error) {
+                return new Response('Jobs admis, démarrage local non confirmé : '.$error->getMessage(),500);
+            }
+        }
+        return new RedirectResponse($this->generateUrl('workbench_home', [
+            'profile_all_queued'=>$queued,
+            'profile_all_skipped_active'=>$skippedActive,
+            'profile_all_skipped_source'=>$skippedMissingSource,
+        ]));
     }
 
     #[Route('/profile/export-all.zip', name: 'profile_export_all_zip', methods: ['GET'])]
@@ -113,6 +142,7 @@ final class WorkbenchController extends AbstractController
         int $id,
         Request $request,
         Database $db,
+        \App\Service\LocalProfileQueue $queue,
     ): Response {
         try {
             $current = $db->analysisJob($id);
@@ -121,6 +151,11 @@ final class WorkbenchController extends AbstractController
                 throw new \DomainException('archived_global_job_read_only');
             }
             $job = $db->requestAnalysisJobCancellation($id);
+            if ((string)($job['status'] ?? '') === 'cancelled'
+                && in_array((string)($job['kind'] ?? ''), ['profile','assistant.profile.review'], true)) {
+                try { $queue->wake(); }
+                catch (\Throwable $error) { error_log('profile_queue_cancel_wake: '.$error->getMessage()); }
+            }
         } catch (\DomainException|\RuntimeException $e) {
             $code = preg_match('/^[a-z0-9_]+$/D',$e->getMessage()) ? $e->getMessage() : 'job_cancellation_refused';
             return $request->isXmlHttpRequest()

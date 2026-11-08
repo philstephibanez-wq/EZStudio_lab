@@ -70,8 +70,8 @@
       if (!response.ok) throw new Error('HTTP '+response.status);
       const data=await response.json();
       const newer=Boolean(data.available && Number(data.job_id)>minimumJob);
-      const active=Boolean(data.available && ['running','cancelling'].includes(data.job_status)
-        && (data.state==='running' || data.state==='created'));
+      const active=Boolean(data.available && ['queued','running','cancelling'].includes(data.job_status)
+        && (data.state==='queued' || data.state==='running' || data.state==='created'));
       if (active || (requested && newer) || hadActive) {
         panel.hidden=false;
       } else if (!requested) {
@@ -86,8 +86,9 @@
         bar.value=Math.max(0,Math.min(100,Number(data.progress)||0));
         state.textContent='Job LAB #'+jobId+' · run #'+Number(data.run_id)+' · '
           +data.job_status+' · '+bar.value+' %';
-        showStage(data);
-        cancel.hidden=!active || data.job_status!=='running' || awaitingCancel;
+        if (data.job_status==='queued') current.textContent='En attente dans la file locale.';
+        else showStage(data);
+        cancel.hidden=!active || !['queued','running'].includes(data.job_status) || awaitingCancel;
         if (data.job_status==='cancelling') {
           cancel.hidden=true;cancelStatus.textContent='Annulation demandée ; attente de l’arrêt confirmé.';
         }
