@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import subprocess
+import threading
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -54,12 +55,39 @@ def _run_logged(
         errors="replace",
         bufsize=1,
     )
-    if proc.stdout is not None:
-        for line in proc.stdout:
-            clean = line.rstrip("\r\n")
-            print(clean, flush=True)
-            _append_line(_CURRENT_LOG_PATH, clean)
-    returncode = int(proc.wait())
+    # Only the LAB one-shot CLI supplies this trusted path.
+    # Stop the Popen child we created, never enumerate or kill unrelated PIDs.
+    cancel_path = os.environ.get("EZSTUDIO_PROFILE_ONESHOT_CANCEL_FILE", "").strip()
+    stop_watch = threading.Event()
+    cancelled = threading.Event()
+    watcher = None
+    if cancel_path:
+        def watch_cancel() -> None:
+            while not stop_watch.wait(0.2):
+                if Path(cancel_path).is_file() and proc.poll() is None:
+                    cancelled.set()
+                    _log_event("profile_oneshot_cancel_requested")
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    return
+        watcher = threading.Thread(target=watch_cancel, name="profile-once-cancel", daemon=True)
+        watcher.start()
+    try:
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                clean = line.rstrip("\r\n")
+                print(clean, flush=True)
+                _append_line(_CURRENT_LOG_PATH, clean)
+        returncode = int(proc.wait())
+    finally:
+        stop_watch.set()
+        if watcher is not None:
+            watcher.join(timeout=2)
+    if cancelled.is_set():
+        _log_event('profile_oneshot_cancel_worker_terminated')
     _log_event(f"process_end returncode={returncode}")
     return returncode
 

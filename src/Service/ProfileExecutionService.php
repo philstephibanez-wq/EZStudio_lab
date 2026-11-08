@@ -8,56 +8,43 @@ final class ProfileExecutionService
         private readonly Database $db,
         private readonly AnalysisRunRegistry $runRegistry,
         private readonly PresetRegistry $presets,
-        private readonly ?GlobalQueueAdmission $admission = null,
     ) {}
 
-    public function queue(int $scientificRunId, string $sourcePath, string $audioHash): array
+    /** Direct and synchronous. Creates a scientific job as RUNNING, never as queued. */
+    public function beginOneShot(int $scientificRunId, string $sourcePath, string $audioHash): array
     {
         $run = $this->runRegistry->run($scientificRunId);
-        if (!$run || (string)$run['item'] !== 'profile') throw new \InvalidArgumentException('profile_run_required');
-        if (!in_array((string)$run['state'], ['created','error'], true)) throw new \InvalidArgumentException('profile_run_not_queueable');
+        if (!$run || (string)$run['item'] !== 'profile' || (string)$run['state'] !== 'created') {
+            throw new \InvalidArgumentException('profile_run_not_startable');
+        }
         if (!is_file($sourcePath)) throw new \RuntimeException('profile_source_missing');
-
         $runtimeRoot = rtrim((string)(getenv('EZSTUDIO_STORAGE_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'), '\\/');
         $outputDir = $runtimeRoot.DIRECTORY_SEPARATOR.'profile'.DIRECTORY_SEPARATOR.$audioHash.DIRECTORY_SEPARATOR.sprintf('run-%06d', $scientificRunId);
-        $outputPath = $outputDir.DIRECTORY_SEPARATOR.'profile.json';
         $request = [
             'scientific_run_id' => $scientificRunId,
             'audio_hash' => $audioHash,
             'output_dir' => $outputDir,
-            'output_path' => $outputPath,
+            'output_path' => $outputDir.DIRECTORY_SEPARATOR.'profile.json',
             'output_contract' => 'ezstudio.profile.v1',
             'automatic_next_stage' => false,
         ];
         $now = gmdate('c');
-
         $stmt = $this->db->pdo()->prepare(
             'INSERT INTO analysis_jobs(run_id,scientific_run_id,song_id,source_path,kind,status,progress,request_json,error,created_at,updated_at,dispatch_owner)
              VALUES(NULL,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
-            $scientificRunId,
-            (int)$run['song_id'],
-            $sourcePath,
-            'profile',
-            'queued',
-            0,
-            json_encode($request, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
-            null,
-            $now,
-            $now,
-            GlobalQueueAdmission::owner(),
+            $scientificRunId, (int)$run['song_id'], $sourcePath, 'profile', 'running', 1,
+            json_encode($request, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            null, $now, $now, 'lab',
         ]);
-
         $jobId = (int)$this->db->pdo()->lastInsertId();
         $this->runRegistry->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
         $this->runRegistry->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
         $this->runRegistry->setLabel($scientificRunId, 'automatic_next_stage', 'false');
-        $this->runRegistry->setState($scientificRunId, 'queued');
-        if ($this->admission !== null) {
-            $this->admission->publish($jobId);
-        }
-        return ['scientific_run_id' => $scientificRunId, 'job_id' => $jobId];
+        $this->runRegistry->setLabel($scientificRunId, 'progress', '1');
+        $this->runRegistry->setState($scientificRunId, 'running');
+        return ['scientific_run_id'=>$scientificRunId,'job_id'=>$jobId];
     }
 
     public function jobForRun(int $scientificRunId): ?array

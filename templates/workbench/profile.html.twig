@@ -4,14 +4,142 @@
 <div class="card hero"><div><h1>PROFILE</h1><div class="meta">Phase PROFILE de la chaîne : caractérisation globale du master avant STEMS.</div></div></div>
 {% include 'workbench/_song_selector.html.twig' %}
 
+{% if app.request.query.get('oneshot') == 'started' %}<div class="card"><strong>PROFILE one-shot demandé.</strong> L’exécution se déroule directement dans un processus PHP CLI distinct, sans file. Actualisez cette page pour consulter le nouveau run ; les journaux sont dans var/logs/profile-once.</div>{% endif %}
 {% if selected_song %}
 <div class="card">
 <div class="hero">
 <div><h2>{{ selected_song.title }}{% if selected_song.artist %} — {{ selected_song.artist }}{% endif %}</h2><div class="meta">PROFILE ne lance jamais STEMS automatiquement.</div></div>
-<form method="post" action="{{ path('profile_analyze') }}"><input type="hidden" name="song" value="{{ selected_song.id }}"><button type="submit">Analyser le profil</button></form>
+<form method="post" action="{{ path('profile_analyze') }}"><input type="hidden" name="song" value="{{ selected_song.id }}"><button type="submit">Analyser le profil (one-shot)</button></form>
 </div>
 </div>
 
+{# One observer per song: no URL-dependent visibility, no legacy reload. #}
+{% if selected_song %}
+<div class="card profile-step-observer" id="profile-step-observer" hidden aria-live="polite">
+  <h2>Progression scientifique PROFILE (one-shot)</h2>
+  <div class="meta" id="profile-step-state">Recherche de l’exécution active…</div>
+  <progress id="profile-step-progress" value="0" max="100" style="width:100%;height:18px">0%</progress>
+  <div class="meta" id="profile-step-current">Étape courante non encore observée.</div>
+  <ol id="profile-step-history" style="margin-top:10px;line-height:1.6"></ol>
+  <button type="button" class="secondary" id="profile-live-cancel" hidden>Annuler cette analyse</button>
+  <div class="meta" id="profile-cancel-response" role="status"></div>
+  <dialog id="profile-cancel-modal" aria-labelledby="profile-cancel-modal-title">
+    <h3 id="profile-cancel-modal-title">Confirmer l’annulation PROFILE</h3>
+    <p id="profile-cancel-modal-detail">Annuler uniquement l’analyse sélectionnée ?</p>
+    <div class="row" style="gap:8px;justify-content:flex-end">
+      <button type="button" class="secondary" id="profile-cancel-dismiss">Conserver l’analyse</button>
+      <button type="button" id="profile-cancel-confirm">Confirmer l’annulation</button>
+    </div>
+  </dialog>
+</div>
+<script>
+(function () {
+  'use strict';
+  const panel=document.getElementById('profile-step-observer');
+  if (!panel) return;
+  const state=document.getElementById('profile-step-state');
+  const bar=document.getElementById('profile-step-progress');
+  const current=document.getElementById('profile-step-current');
+  const history=document.getElementById('profile-step-history');
+  const cancel=document.getElementById('profile-live-cancel');
+  const cancelStatus=document.getElementById('profile-cancel-response');
+  const modal=document.getElementById('profile-cancel-modal');
+  const dismiss=document.getElementById('profile-cancel-dismiss');
+  const confirm=document.getElementById('profile-cancel-confirm');
+  const modalDetail=document.getElementById('profile-cancel-modal-detail');
+  const statusUrl={{ path('profile_oneshot_status',{id:selected_song.id})|json_encode|raw }};
+  const cancellationPattern={{ path('profile_once_cancel',{id:999999999})|json_encode|raw }};
+  const resultUrl={{ path('workbench_profile',{song:selected_song.id})|json_encode|raw }};
+  const requested={{ (app.request.query.get('oneshot') == 'started')|json_encode|raw }};
+  const minimumJob=Number({{ (app.request.query.get('after_job') ?? 0)|json_encode|raw }})||0;
+  let jobId=0, stages=new Set(), hadActive=false, awaitingCancel=false;
+  if (requested) {panel.hidden=false;state.textContent='Lancement demandé ; attente du job LAB.';}
+  function showStage(data) {
+    if (typeof data.stage !== 'string' || !data.stage.trim()) return;
+    current.textContent='Module courant : '+data.stage;
+    const key=data.stage;
+    if (stages.has(key)) return;
+    stages.add(key);
+    const li=document.createElement('li');
+    li.textContent=String(data.progress)+' % · '+key;
+    history.appendChild(li);
+  }
+  async function poll() {
+    try {
+      const response=await fetch(statusUrl,{credentials:'same-origin',cache:'no-store'});
+      if (!response.ok) throw new Error('HTTP '+response.status);
+      const data=await response.json();
+      const newer=Boolean(data.available && Number(data.job_id)>minimumJob);
+      const active=Boolean(data.available && ['running','cancelling'].includes(data.job_status)
+        && (data.state==='running' || data.state==='created'));
+      if (active || (requested && newer) || hadActive) {
+        panel.hidden=false;
+      } else if (!requested) {
+        panel.hidden=true;
+      }
+      if (data.available && (active || requested && newer || hadActive)) {
+        if (Number(data.job_id)!==jobId) {
+          jobId=Number(data.job_id);stages=new Set();history.replaceChildren();
+          awaitingCancel=false;cancel.disabled=false;
+        }
+        hadActive=hadActive||active;
+        bar.value=Math.max(0,Math.min(100,Number(data.progress)||0));
+        state.textContent='Job LAB #'+jobId+' · run #'+Number(data.run_id)+' · '
+          +data.job_status+' · '+bar.value+' %';
+        showStage(data);
+        cancel.hidden=!active || data.job_status!=='running' || awaitingCancel;
+        if (data.job_status==='cancelling') {
+          cancel.hidden=true;cancelStatus.textContent='Annulation demandée ; attente de l’arrêt confirmé.';
+        }
+        if (['completed','cancelled','failed'].includes(data.job_status) || ['done','error','cancelled'].includes(data.state)) {
+          cancel.hidden=true;
+          const a=document.createElement('a');
+          a.href=resultUrl+'&run='+Number(data.run_id);
+          a.textContent='Consulter le run #'+Number(data.run_id);
+          if (!panel.querySelector('a')) panel.appendChild(a);
+          if (data.job_status==='cancelled') cancelStatus.textContent='Annulation confirmée.';
+          return;
+        }
+      } else if (requested && !newer) {
+        state.textContent='Lancement demandé, mais aucun nouveau job LAB attesté.';
+      }
+    } catch (error) {
+      panel.hidden=false;
+      state.textContent='Observation indisponible : '+error.message;
+    }
+    window.setTimeout(poll,2000);
+  }
+  cancel.addEventListener('click',function () {
+    if (!jobId || awaitingCancel) return;
+    modalDetail.textContent='Annuler uniquement le job LAB #'+jobId+' ?';
+    modal.showModal();
+  });
+  dismiss.addEventListener('click',function () { modal.close(); });
+  confirm.addEventListener('click',async function () {
+    if (!jobId || awaitingCancel) return;
+    modal.close();
+    awaitingCancel=true;cancel.disabled=true;
+    cancelStatus.textContent='Transmission de la demande…';
+    try {
+      const url=cancellationPattern.replace('999999999',String(jobId));
+      const response=await fetch(url,{
+        method:'POST',credentials:'same-origin',
+        headers:{'X-EZS-Profile-Cancel':'request'}
+      });
+      const data=await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.reason||'HTTP '+response.status);
+      cancelStatus.textContent=data.message||'Demande transmise.';
+      cancel.hidden=true;
+    } catch (error) {
+      cancelStatus.textContent='Annulation refusée : '+error.message;
+      awaitingCancel=false;cancel.disabled=false;
+      cancel.textContent='Annuler cette analyse';
+    }
+  });
+  poll();
+})();
+</script>
+{% endif %}
 <details class="card" style="margin-top:10px">
 <summary style="cursor:pointer;font-weight:600">Corriger le titre et l’interprète</summary>
 <form id="song-identity-form" action="{{ path('profile_song_identity', {id: selected_song.id}) }}" method="post" style="margin-top:12px">
@@ -59,11 +187,11 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
 
   {% if job_status == 'queued' %}
     <div class="card">
-      <h2>PROFILE en attente</h2>
-      <div class="meta">Job #{{ profile_job.id ?? '—' }} · en attente dans la queue orchestrator · {{ profile_percent }}%</div>
+      <h2>PROFILE en attente (historique)</h2>
+      <div class="meta">Job #{{ profile_job.id ?? '—' }} · en attente (analyse historique, aucune FIFO active) · {{ profile_percent }}%</div>
       <progress value="{{ profile_percent }}" max="100" style="width:100%;height:18px">{{ profile_percent }}%</progress>
     </div>
-  {% elseif job_status in ['running','cancel_requested'] %}
+  {% elseif job_status in ['running','cancel_requested'] and not (profile_job and profile_job.dispatch_owner == 'lab') %}
     <div class="card">
       <h2>Progression PROFILE</h2>
       <div class="meta" style="margin-bottom:5px">Job #{{ profile_job.id ?? '—' }} · {{ job_status }} · {{ profile_percent }}%</div>
@@ -76,35 +204,27 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
     </div>
   {% endif %}
 
-  {% if profile_active %}
-    <script>
-    (function ($) {
-        'use strict';
-        if (!$) return;
-        var previousState = {{ selected_profile_run.state|json_encode|raw }};
-        var url = {{ path('profile_status', {id: selected_profile_run.id})|json_encode|raw }};
-        function pollProfile() {
-            $.ajax({url: url, method: 'GET', dataType: 'json', cache: false, timeout: 6000})
-                .done(function (data) {
-                    if (data.state === 'done' || data.state === 'error'
-                        || (previousState !== data.state && data.state === 'running')) {
-                        window.location.reload();
-                        return;
-                    }
-                    var percent = Math.max(0, Math.min(100, Number(data.progress) || 0));
-                    var region = $('.card').filter(function () {
-                        var heading = $(this).children('h2').first().text();
-                        return heading === 'PROFILE en attente' || heading === 'Progression PROFILE';
-                    }).first();
-                    region.find('progress').first().val(percent).text(percent + '%');
-                    region.find('.meta').first().text('Analyse PROFILE · ' + percent + '%');
-                })
-                .always(function () { window.setTimeout(pollProfile, 5000); });
-        }
-        window.setTimeout(pollProfile, 5000);
-    })(window.jQuery);
-    </script>
-  {% endif %}
+  {# Legacy FIFO reload polling retired; one-shot observer owns live updates. #}
+{% if selected_profile_run.state == 'done' %}
+{% set completed_modules = selected_profile_run.diagnostics.module_registry.modules ?? [] %}
+{% if completed_modules is not empty %}
+<div class="card" id="profile-modules-termines">
+  <h2>Étapes scientifiques terminées — run #{{ selected_profile_run.id }}</h2>
+  <ol style="line-height:1.7">
+  {% for m in completed_modules %}
+    <li>
+      <strong>{{ m.display_name ?? m.name ?? m.module_id ?? m.id ?? m.family ?? 'Module' }}</strong>
+      {% if m.device is defined %}<span class="meta">· {{ m.device }}</span>{% endif %}
+      {% if m.timing.elapsed_seconds is defined %}
+        <span class="meta">· {{ m.timing.elapsed_seconds|number_format(2) }} s</span>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+  <p class="meta">Modules issus du résultat scientifique enregistré ; aucun état inventé.</p>
+</div>
+{% endif %}
+{% endif %}
 {% set p = selected_profile_run.metrics %}
 {% set t = selected_profile_run.diagnostics.tagging ?? {} %}
 <div class="card"><h2>Caractéristiques</h2><div class="kv">
@@ -760,54 +880,8 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
 
 </details>
 <div class="card"><a class="button secondary" href="{{ path('scientific_run',{id:selected_profile_run.id}) }}">Run PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
-{% if profile_active %}
-<div data-profile-live-refresh="1" hidden></div>
-<script>
-(() => {
-  const marker = document.querySelector('[data-profile-live-refresh="1"]');
-  if (!marker || window.__ezstudioProfileLiveRefresh) return;
-  window.__ezstudioProfileLiveRefresh = true;
+{# Full-page PROFILE HTML replacement retired; JSON observer owns live updates. #}
 
-  let stopped = false;
-
-  async function refreshProfileContent() {
-    if (stopped) return;
-
-    try {
-      const response = await fetch(window.location.href, {
-        cache: 'no-store',
-        headers: {'Accept': 'text/html'}
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const html = await response.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const nextWrap = doc.querySelector('.wrap');
-      const currentWrap = document.querySelector('.wrap');
-
-      if (!nextWrap || !currentWrap) {
-        throw new Error('profile_wrap_missing');
-      }
-
-      const stillActive = !!nextWrap.querySelector('[data-profile-live-refresh="1"]');
-      currentWrap.innerHTML = nextWrap.innerHTML;
-
-      if (stillActive) {
-        window.setTimeout(refreshProfileContent, 2500);
-      } else {
-        stopped = true;
-        window.__ezstudioProfileLiveRefresh = false;
-      }
-    } catch (error) {
-      window.setTimeout(refreshProfileContent, 2500);
-    }
-  }
-
-  window.addEventListener('pagehide', () => { stopped = true; }, {once:true});
-  window.setTimeout(refreshProfileContent, 2500);
-})();
-</script>
-{% endif %}
 {% endif %}
 {% endif %}
 {% endblock %}

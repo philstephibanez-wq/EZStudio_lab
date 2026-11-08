@@ -7,7 +7,6 @@ final class ChordsExecutionService
     public function __construct(
         private readonly Database $db,
         private readonly AnalysisRunRegistry $runRegistry,
-        private readonly ?GlobalQueueAdmission $admission = null,
     ) {}
 
     public function queue(int $scientificRunId): array
@@ -58,9 +57,6 @@ final class ChordsExecutionService
         $this->runRegistry->setLabel($scientificRunId, 'benchmark_run_id', (string)$benchmarkRunId);
         $this->runRegistry->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
         $this->runRegistry->setState($scientificRunId, 'queued');
-        if ($this->admission !== null) {
-            $this->admission->publish($jobId);
-        }
 
         return [
             'scientific_run_id' => $scientificRunId,

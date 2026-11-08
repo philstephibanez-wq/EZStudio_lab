@@ -82,6 +82,8 @@
             <div class="meta">Révision IA en attente</div>
           {% endif %}
         {% endif %}
+      {% elseif key == 'profile' and s.state == 'legacy_fifo' %}
+        <span class="badge">Ancienne tentative FIFO (historique, hors one-shot)</span>
       {% elseif s.state == 'queued' %}
         <span class="badge" data-analysis-active="1">En attente{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
         {% if s.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:s.job_id}) }}" data-job-id="{{ s.job_id }}" title="Annuler le job #{{ s.job_id }}">■</button>{% endif %}
@@ -97,12 +99,17 @@
       {% else %}
         <span class="badge">—</span>
       {% endif %}
+      {% if key == 'profile' and s.state == 'done' and s.run_id %}
+        <div class="meta"><a href="{{ path('workbench_profile',{song:song.id,run:s.run_id}) }}">Résultat scientifique #{{ s.run_id }}</a></div>
+      {% endif %}
       {% if key == 'profile' and s.latest_attempt is defined and s.latest_attempt is not null %}
         {% set attempt = s.latest_attempt %}
         {% if attempt.state == 'error' %}
           <div class="catalog-attempt"><span class="badge error">Dernier essai : erreur</span></div>
         {% elseif attempt.state == 'cancelled' %}
           <div class="catalog-attempt"><span class="badge">Dernier essai : annulé</span></div>
+        {% elseif attempt.state == 'legacy_fifo' %}
+          <div class="catalog-attempt"><span class="badge">Ancienne tentative FIFO (hors one-shot)</span></div>
         {% elseif attempt.state == 'queued' %}
           <div class="catalog-attempt"><span class="badge" data-analysis-active="1">Dernier essai : en attente</span>
           {% if attempt.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:attempt.job_id}) }}" data-job-id="{{ attempt.job_id }}" title="Annuler le job #{{ attempt.job_id }}">■</button>{% endif %}</div>

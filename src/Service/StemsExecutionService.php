@@ -17,7 +17,6 @@ final class StemsExecutionService
     public function __construct(
         private readonly Database $db,
         private readonly AnalysisRunRegistry $runRegistry,
-        private readonly ?GlobalQueueAdmission $admission = null,
     ) {}
 
     public function queue(
@@ -65,9 +64,6 @@ final class StemsExecutionService
         $this->runRegistry->setLabel($scientificRunId, 'audio_sha256', $audioHash);
         $this->runRegistry->setLabel($scientificRunId, 'technical_job_id', (string)$jobId);
         $this->runRegistry->setState($scientificRunId, 'queued');
-        if ($this->admission !== null) {
-            $this->admission->publish($jobId);
-        }
 
         return [
             'scientific_run_id' => $scientificRunId,

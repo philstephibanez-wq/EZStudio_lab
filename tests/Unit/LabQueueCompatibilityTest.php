@@ -41,7 +41,7 @@ final class LabQueueCompatibilityTest extends TestCase
     public function testScientificProfileServiceContractRemainsAvailable(): void
     {
         $reflection = new \ReflectionClass(ProfileExecutionService::class);
-        foreach (['queue','jobForRun','progressFromJob','completeFromJob','failFromJob'] as $method) {
+        foreach (['beginOneShot','jobForRun','progressFromJob','completeFromJob','failFromJob'] as $method) {
             self::assertTrue($reflection->hasMethod($method), $method);
             self::assertTrue($reflection->getMethod($method)->isPublic(), $method);
         }

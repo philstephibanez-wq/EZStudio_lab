@@ -928,7 +928,7 @@ final class CatalogService
         $job = null;
         if ($this->tableExists('analysis_jobs')) {
             $stmt = $this->db->pdo()->prepare(
-                "SELECT id,status,progress
+                "SELECT id,status,progress,dispatch_owner
                  FROM analysis_jobs
                  WHERE scientific_run_id=?
                  ORDER BY id DESC LIMIT 1"
@@ -946,6 +946,14 @@ final class CatalogService
                 'failed' => 'error',
                 default => $viewState,
             };
+        }
+
+        // Old Orchestrator jobs are retained in SQLite but are not executable
+        // by LAB one-shot. Never present them as active jobs or allow a UI cancel.
+        if ($item === 'profile' && $job !== null
+            && (string)($job['dispatch_owner'] ?? '') === 'orchestrator'
+            && in_array($viewState, ['queued', 'running'], true)) {
+            $viewState = 'legacy_fifo';
         }
 
         return [

@@ -49,63 +49,9 @@ final class WorkbenchController extends AbstractController
     }
 
     #[Route('/profile/analyze-all', name: 'profile_analyze_all', methods: ['POST'])]
-    public function analyzeAllProfiles(
-        WorkbenchCatalog $catalog,
-        AnalysisRunRegistry $runRegistry,
-        ProfileExecutionService $execution,
-        Database $db,
-    ): Response {
-        $queued = 0;
-        $skippedActive = 0;
-        $skippedMissingSource = 0;
-
-        foreach ($catalog->songs() as $song) {
-            $songIds = array_values(array_map(
-                'intval',
-                $song['song_ids'] ?? [(int)$song['id']]
-            ));
-
-            if ($db->activeAnalysisJobsForSongsKind($songIds, 'profile') !== []) {
-                ++$skippedActive;
-                continue;
-            }
-
-            $source = $catalog->sourcePath($song);
-            if ($source === null) {
-                ++$skippedMissingSource;
-                continue;
-            }
-
-            $run = $runRegistry->createRun(
-                (int)$song['id'],
-                'profile',
-                [
-                    'name' => 'ezstudio-profile-modules',
-                    'version' => 'r3b31',
-                    'model' => 'multi-engine-profile-modules',
-                ],
-                [
-                    'audio_sha256' => (string)$song['audio_sha256'],
-                    'output_contract' => 'ezstudio.profile.v1',
-                    'automatic_next_stage' => false,
-                ],
-            );
-
-            $execution->queue(
-                (int)$run['id'],
-                $source,
-                (string)$song['audio_sha256']
-            );
-            ++$queued;
-        }
-
-        return new RedirectResponse(
-            $this->generateUrl('workbench_home', [
-                'profile_all_queued' => $queued,
-                'profile_all_skipped_active' => $skippedActive,
-                'profile_all_skipped_source' => $skippedMissingSource,
-            ])
-        );
+    public function analyzeAllProfiles(): Response
+    {
+        return new Response('Analyse en lot désactivée. PROFILE est exclusivement one-shot.', 409);
     }
 
     #[Route('/profile/export-all.zip', name: 'profile_export_all_zip', methods: ['GET'])]
@@ -167,17 +113,14 @@ final class WorkbenchController extends AbstractController
         int $id,
         Request $request,
         Database $db,
-        \App\Service\GlobalQueueTerminalSync $globalTerminalSync,
     ): Response {
         try {
             $current = $db->analysisJob($id);
             if ($current === null) throw new \DomainException('job_not_found');
-            if ((string)($current['dispatch_owner'] ?? 'lab') === 'orchestrator' && !$request->isXmlHttpRequest()) {
-                throw new \DomainException('ajax_origin_required');
+            if ((string)($current['dispatch_owner'] ?? 'lab') === 'orchestrator') {
+                throw new \DomainException('archived_global_job_read_only');
             }
-            $job = (string)($current['dispatch_owner'] ?? 'lab') === 'orchestrator'
-                ? $globalTerminalSync->cancelOrReconcile($id)
-                : $db->requestAnalysisJobCancellation($id);
+            $job = $db->requestAnalysisJobCancellation($id);
         } catch (\DomainException|\RuntimeException $e) {
             $code = preg_match('/^[a-z0-9_]+$/D',$e->getMessage()) ? $e->getMessage() : 'job_cancellation_refused';
             return $request->isXmlHttpRequest()

@@ -48,7 +48,8 @@ final class CatalogueDistributedPanelRetirement1_6A2Test extends TestCase
         $service = (string) file_get_contents($root.'/src/Service/DistributedAnalysisLeaseService.php');
         self::assertStringContainsString('public function workersSnapshot(): array', $service);
         self::assertStringContainsString('public function jobsSnapshot(?int $songId = null): array', $service);
-        self::assertFileExists($root.'/src/Command/PublishGlobalQueueCommand.php');
-        self::assertFileExists($root.'/src/Service/GlobalQueueAdmission.php');
+        self::assertFileDoesNotExist($root.'/src/Command/PublishGlobalQueueCommand.php');
+        self::assertFileDoesNotExist($root.'/src/Service/GlobalQueueAdmission.php');
+        self::assertFileExists($root.'/src/Command/ProfileOnceCommand.php');
     }
 }

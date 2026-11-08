@@ -174,34 +174,158 @@ final class ProfileController extends AbstractController
             'progress' => max(0, min(100, $percent)),
         ], 200, ['Cache-Control' => 'no-store']);
     }
-    #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
-    public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileExecutionService $execution): Response
+    /** Read-only observation of actual LAB one-shot jobs and runner progress. */
+    #[Route('/profile/song/{id<\d+>}/oneshot-status', name: 'profile_oneshot_status', methods: ['GET'])]
+    public function oneShotStatus(int $id, \App\Service\Database $db): Response
     {
-        $songId = filter_var($request->request->get('song'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $stmt = $db->pdo()->prepare(<<<'SQL'
+SELECT j.id AS job_id,j.scientific_run_id AS run_id,j.status AS job_status,
+       j.progress AS job_progress,r.state AS run_state
+FROM analysis_jobs j
+JOIN scientific_runs r ON r.id=j.scientific_run_id AND r.item='profile'
+WHERE j.song_id=? AND j.kind='profile' AND j.dispatch_owner='lab'
+ORDER BY j.id DESC LIMIT 1
+SQL);
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return $this->json(['available'=>false], 200, ['Cache-Control'=>'no-store']);
+        }
+        $jobId = (int)$row['job_id'];
+        $state = (string)$row['run_state'];
+        $percent = max(0, min(100, (int)$row['job_progress']));
+        $stage = null;
+        $observedAt = null;
+        if ((string)$row['job_status'] === 'running' && $state === 'running') {
+            $root = dirname(__DIR__, 2);
+            // The path is fixed by the trusted integer job ID; never from HTTP input.
+            $progress = $root.'/var/tmp/jobs/'.$jobId.'/progress.json';
+            if (is_file($progress) && filesize($progress) <= 4096) {
+                $raw = json_decode((string)file_get_contents($progress), true);
+                if (is_array($raw) && is_int($raw['percent'] ?? null)
+                    && is_string($raw['message'] ?? null)) {
+                    $percent = max($percent, min(99, max(0, $raw['percent'])));
+                    $stage = mb_substr(trim($raw['message']), 0, 140);
+                    $observedAt = is_numeric($raw['updated_at'] ?? null)
+                        ? (int)$raw['updated_at'] : null;
+                }
+            }
+        }
+        return $this->json([
+            'available'=>true,
+            'job_id'=>$jobId,
+            'run_id'=>(int)$row['run_id'],
+            'state'=>$state,
+            'job_status'=>(string)$row['job_status'],
+            'cancellation_requested'=>(string)$row['job_status'] === 'cancelling',
+            'progress'=>$state === 'done' ? 100 : $percent,
+            'stage'=>$stage,
+            'observed_at'=>$observedAt,
+        ], 200, ['Cache-Control'=>'no-store']);
+    }
+
+    /** Request cancellation of this LAB one-shot only. Never kill a PID from a request. */
+    #[Route('/profile/oneshot/{id<\d+>}/cancel', name: 'profile_once_cancel', methods: ['POST'])]
+    public function cancelOneShot(int $id, Request $request, \App\Service\Database $db): Response
+    {
+        $origin = (string)$request->headers->get('Origin', '');
+        $site = (string)$request->headers->get('Sec-Fetch-Site', '');
+        if ($request->headers->get('X-EZS-Profile-Cancel') !== 'request'
+            || ($site !== '' && $site !== 'same-origin')
+            || ($origin !== '' && $origin !== $request->getSchemeAndHttpHost())) {
+            return $this->json(['ok'=>false, 'reason'=>'origin_forbidden'], 403);
+        }
+        $job = $db->analysisJob($id);
+        if ($job === null || (string)$job['kind'] !== 'profile'
+            || (string)($job['dispatch_owner'] ?? '') !== 'lab'
+            || (int)($job['scientific_run_id'] ?? 0) <= 0) {
+            return $this->json(['ok'=>false, 'reason'=>'not_local_profile'], 404);
+        }
+        if (!in_array((string)$job['status'], ['running','cancelling'], true)) {
+            return $this->json(['ok'=>false, 'reason'=>'job_not_active'], 409);
+        }
+        // An owned one-shot context must exist; orphan/legacy jobs are not cancellable here.
+        $root = dirname(__DIR__, 2);
+        $jobFile = $root.'/var/tmp/profile-once/'.$id.'/job.json';
+        if (!is_file($jobFile)) {
+            return $this->json(['ok'=>false, 'reason'=>'oneshot_context_missing'], 409);
+        }
+        try {
+            $updated = $db->requestAnalysisJobCancellation($id);
+        } catch (\Throwable $error) {
+            return $this->json(['ok'=>false, 'reason'=>'cancel_refused'], 409);
+        }
+        if ((string)($updated['status'] ?? '') !== 'cancelling') {
+            return $this->json(['ok'=>false, 'reason'=>'job_already_terminal'], 409);
+        }
+        return $this->json([
+            'ok'=>true, 'job_id'=>$id, 'state'=>'cancelling',
+            'message'=>'Annulation demandée ; arrêt du worker non encore confirmé.',
+        ], 202, ['Cache-Control'=>'no-store']);
+    }
+    /** Start the CLI one-shot in a DETACHED OS process, never in the HTTP request. */
+    #[Route('/profile/analyze', name: 'profile_analyze', methods: ['GET','POST'])]
+    public function analyze(Request $request, WorkbenchCatalog $catalog, \App\Service\Database $database): Response
+    {
+        if ($request->isMethod('GET')) {
+            return new RedirectResponse($this->generateUrl('workbench_profile'));
+        }
+        // Same-origin form only: no externally forgeable analysis launch.
+        $site = (string)$request->headers->get('Sec-Fetch-Site', '');
+        $origin = (string)$request->headers->get('Origin', '');
+        $referer = (string)$request->headers->get('Referer', '');
+        $base = $request->getSchemeAndHttpHost();
+        if (($site !== '' && $site !== 'same-origin')
+            || ($origin !== '' && $origin !== $base)
+            || ($site === '' && $origin === '' && !str_starts_with($referer, $base.'/'))) {
+            return new Response('Origine du formulaire refusée.', 403);
+        }
+        $songId = filter_var($request->request->get('song'), FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
         if ($songId === false || $songId === null) return new Response('Chanson invalide.', 400);
-
         $song = $catalog->selectedSong((int)$songId);
-        if (!$song) return new Response('Chanson introuvable.', 404);
-
-        $source = $catalog->sourcePath($song);
-        if ($source === null) return new Response('Source IMPORT indisponible.', 409);
-
-        $run = $runRegistry->createRun(
-            (int)$song['id'],
-            'profile',
-            ['name' => 'ezstudio-profile-modules', 'version' => 'r3b31', 'model' => 'multi-engine-profile-modules'],
-            [
-                'audio_sha256' => (string)$song['audio_sha256'],
-                'output_contract' => 'ezstudio.profile.v1',
-                'automatic_next_stage' => false,
-            ],
+        if (!$song || !in_array((int)$songId, array_map('intval', $song['song_ids'] ?? [(int)$song['id']]), true)) {
+            return new Response('Chanson introuvable.', 404);
+        }
+        if ($catalog->sourcePath($song) === null) return new Response('Source IMPORT indisponible.', 409);
+        // Refuse a second direct launch while another LAB job already runs.
+        if ((int)$database->pdo()->query("SELECT COUNT(*) FROM analysis_jobs WHERE status='running'")->fetchColumn() > 0) {
+            return new Response('Une analyse LAB est déjà en cours.', 409);
+        }
+        $previousJobId = (int)$database->pdo()->query(
+            'SELECT COALESCE(MAX(id),0) FROM analysis_jobs'
+        )->fetchColumn();
+        $root = dirname(__DIR__, 2);
+        $logDir = $root.'/var/logs/profile-once';
+        if (!is_dir($logDir) && !mkdir($logDir, 0700, true) && !is_dir($logDir)) {
+            return new Response('Répertoire de journal indisponible.', 500);
+        }
+        $marker = gmdate('Ymd_His').'_'.bin2hex(random_bytes(3));
+        $stdout = $logDir.'/'.$marker.'.out.log';
+        $stderr = $logDir.'/'.$marker.'.err.log';
+        // A trusted integer is the ONLY value interpolated into the PowerShell process.
+        // Start-Process detaches the CLI: FastCGI is NOT blocked by multi-minute science.
+        $script = '$ErrorActionPreference = "Stop"; '
+            .'$php = (Get-Command php.exe -ErrorAction Stop).Source; '
+            .'$p = Start-Process -FilePath $php '
+            .'-ArgumentList "bin/console lab:profile:once --song-id='.(int)$songId.' --apply" '
+            .'-WorkingDirectory "H:/EZStudio_lab" '
+            .'-RedirectStandardOutput "'.str_replace('\\', '/', $stdout).'" '
+            .'-RedirectStandardError "'.str_replace('\\', '/', $stderr).'" '
+            .'-PassThru; '
+            .'if (!$p -or $p.Id -lt 1) { throw "profile_once_spawn_failed" }; '
+            .'Write-Output ("PROFILE_ONESHOT_SPAWNED_PID=" + $p.Id)';
+        $launcher = new \Symfony\Component\Process\Process(
+            ['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',$script],
+            $root
         );
-
-        $execution->queue((int)$run['id'], $source, (string)$song['audio_sha256']);
-
+        $launcher->setTimeout(20);
+        try { $launcher->run(); }
+        catch (\Throwable $e) { return new Response('Démarrage one-shot impossible : '.$e->getMessage(), 500); }
+        if (!$launcher->isSuccessful() || !str_contains($launcher->getOutput(), 'PROFILE_ONESHOT_SPAWNED_PID=')) {
+            return new Response('Démarrage one-shot refusé. Vérifier PHP CLI et les journaux LAB.', 500);
+        }
         return new RedirectResponse($this->generateUrl('workbench_profile', [
-            'song' => (int)$song['id'],
-            'run' => (int)$run['id'],
+            'song'=>(int)$songId, 'oneshot'=>'started', 'after_job'=>$previousJobId,
         ]));
     }
 }
