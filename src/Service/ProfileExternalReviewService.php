@@ -8,7 +8,7 @@ final class ProfileExternalReviewService
 {
     private const SCHEMA = 'ezstudio.profile-external-review.v1';
 
-    public function __construct(private readonly Database $db) {}
+    public function __construct(private readonly Database $db, private readonly ?LocalProfileQueue $localQueue = null) {}
 
     public function ensureSchema(): void
     {
@@ -37,90 +37,29 @@ SQL);
 
     public function queue(int $limit = 100): array
     {
-        $this->ensureSchema();
-        (new ProfileAiRequestService($this->db))->get(0);
-        $effectiveLimit = max(1, min(500, $limit));
-
-        $sql = <<<'SQL'
-SELECT
-    sr.id AS run_id,
-    sr.public_id,
-    sr.song_id,
-    sr.state,
-    sr.engine_name,
-    sr.engine_version,
-    sr.model_name,
-    sr.checkpoint,
-    sr.config_json,
-    sr.metrics_json,
-    sr.diagnostics_json,
-    sr.finished_at,
-    s.title,
-    s.artist,
-    s.audio_sha256
-FROM scientific_runs sr
-JOIN songs s ON s.id=sr.song_id
-JOIN (
-    SELECT
-        CASE
-            WHEN TRIM(s2.audio_sha256)='' THEN 'song:' || s2.id
-            ELSE s2.audio_sha256
-        END AS audio_key,
-        MAX(sr2.id) AS max_run_id
-    FROM scientific_runs sr2
-    JOIN songs s2 ON s2.id=sr2.song_id
-    WHERE sr2.item='profile'
-      AND sr2.state='done'
-    GROUP BY
-        CASE
-            WHEN TRIM(s2.audio_sha256)='' THEN 'song:' || s2.id
-            ELSE s2.audio_sha256
-        END
-) latest ON latest.max_run_id=sr.id
-WHERE sr.item='profile'
-  AND sr.state='done'
-  AND (
-    NOT EXISTS (
-      SELECT 1 FROM profile_external_revisions er
-      WHERE er.run_id=sr.id AND er.status='completed'
-    ) OR EXISTS (
-      SELECT 1 FROM profile_ai_requests req
-      WHERE req.run_id=sr.id AND req.status IN ('pending','running')
-    )
-  )
-ORDER BY sr.id ASC
-LIMIT ?
-SQL;
-
-        $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->bindValue(1, $effectiveLimit, \PDO::PARAM_INT);
-        $stmt->execute();
-
-        $rows = [];
-        foreach ($stmt->fetchAll() as $row) {
-            $rows[] = [
-                'schema' => 'ezstudio.profile-review-queue-item.v1',
-                'run_id' => (int)$row['run_id'],
-                'public_id' => (string)$row['public_id'],
-                'song_id' => (int)$row['song_id'],
-                'title' => (string)$row['title'],
-                'artist' => (string)$row['artist'],
-                'audio_sha256' => (string)$row['audio_sha256'],
-                'state' => (string)$row['state'],
-                'engine' => [
-                    'name' => (string)$row['engine_name'],
-                    'version' => (string)$row['engine_version'],
-                    'model' => (string)$row['model_name'],
-                    'checkpoint' => (string)$row['checkpoint'],
-                ],
-                'config' => $this->decodeObject((string)$row['config_json']),
-                'metrics' => $this->decodeObject((string)$row['metrics_json']),
-                'diagnostics' => $this->decodeObject((string)$row['diagnostics_json']),
-                'finished_at' => $row['finished_at'] !== null ? (string)$row['finished_at'] : null,
-            ];
+        // LEGACY_FIFO_GATE_R1: historic Assistant receives the canonical LAB head,
+        // and only the public final assertions belonging to that run.
+        $head = $this->legacyAssistantAutoReviewHead();
+        if ($head === null) return [];
+        $runId = (int)$head['scientific_run_id'];
+        try {
+            $final = $this->assertionsForRun($runId);
+            return [LegacyProfileFinalProjection::fromFinal($runId, $final)];
+        } catch (\DomainException $e) {
+            // A missing recording identity does not permit a claim or a skip.
+            return [];
         }
+    }
 
-        return $rows;
+    private function legacyAssistantAutoReviewHead(): ?array
+    {
+        $pdo = $this->db->pdo();
+        if ((int)$pdo->query(LocalProfileQueue::activeSql())->fetchColumn() > 0) return null;
+        $head = $pdo->query(LocalProfileQueue::headSql())->fetch(\PDO::FETCH_ASSOC);
+        if (!$head || (string)$head['kind'] !== 'assistant.profile.review') return null;
+        $paused = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_ai_maintenance'")->fetchColumn();
+        if ($paused && (int)$pdo->query('SELECT paused FROM profile_ai_maintenance WHERE id=1')->fetchColumn() === 1) return null;
+        return $head;
     }
 
     public function reviewItemForRun(int $runId): ?array
@@ -222,6 +161,16 @@ SQL);
         }
         $reviewer = mb_substr($reviewer, 0, 100);
 
+        // LEGACY_FIFO_COMPLETION_R1: historical Assistant posts the completed
+        // evidence to /profile/reviews; do not allow it to skip a queued head.
+        $legacyAssistant = $reviewer === 'assistant-auto' && $status === 'completed';
+        if ($legacyAssistant) {
+            $head = $this->legacyAssistantAutoReviewHead();
+            if ($head === null || (int)$head['scientific_run_id'] !== (int)$runId) {
+                throw new \RuntimeException('legacy_assistant_not_fifo_head');
+            }
+        }
+
         $canonical = json_encode(
             [
                 'identity' => $identity,
@@ -242,50 +191,56 @@ SQL);
         }
         $revisionKey = mb_substr($revisionKey, 0, 120);
 
-        $now = gmdate('c');
-        $upsert = $this->db->pdo()->prepare(
-            'INSERT INTO profile_external_revisions(
-                run_id,revision_key,reviewer,status,
-                identity_json,sources_json,consensus_json,comparison_json,
-                confidence,schema_version,created_at,updated_at
-             ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-             ON CONFLICT(run_id,revision_key) DO UPDATE SET
-                reviewer=excluded.reviewer,
-                status=excluded.status,
-                identity_json=excluded.identity_json,
-                sources_json=excluded.sources_json,
-                consensus_json=excluded.consensus_json,
-                comparison_json=excluded.comparison_json,
-                confidence=excluded.confidence,
-                schema_version=excluded.schema_version,
-                updated_at=excluded.updated_at'
-        );
-        $upsert->execute([
-            (int)$runId,
-            $revisionKey,
-            $reviewer,
-            $status,
-            json_encode($identity, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            json_encode($consensus, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            json_encode($comparison, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            $confidence,
-            self::SCHEMA,
-            $now,
-            $now,
-        ]);
+        $persist = function () use ($runId, $revisionKey, $reviewer, $status, $identity, $sources, $consensus, $comparison, $confidence): array {
+            $now = gmdate('c');
+            $upsert = $this->db->pdo()->prepare(
+                'INSERT INTO profile_external_revisions(
+                    run_id,revision_key,reviewer,status,
+                    identity_json,sources_json,consensus_json,comparison_json,
+                    confidence,schema_version,created_at,updated_at
+                 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                 ON CONFLICT(run_id,revision_key) DO UPDATE SET
+                    reviewer=excluded.reviewer,
+                    status=excluded.status,
+                    identity_json=excluded.identity_json,
+                    sources_json=excluded.sources_json,
+                    consensus_json=excluded.consensus_json,
+                    comparison_json=excluded.comparison_json,
+                    confidence=excluded.confidence,
+                    schema_version=excluded.schema_version,
+                    updated_at=excluded.updated_at'
+            );
+            $upsert->execute([
+                (int)$runId,
+                $revisionKey,
+                $reviewer,
+                $status,
+                json_encode($identity, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode($consensus, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode($comparison, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                $confidence,
+                self::SCHEMA,
+                $now,
+                $now,
+            ]);
 
-        $select = $this->db->pdo()->prepare(
-            'SELECT * FROM profile_external_revisions
-             WHERE run_id=? AND revision_key=?'
-        );
-        $select->execute([(int)$runId, $revisionKey]);
-        $row = $select->fetch();
-        if (!$row) {
-            throw new \RuntimeException('profile_external_review_persist_failed');
+            $select = $this->db->pdo()->prepare(
+                'SELECT * FROM profile_external_revisions
+                 WHERE run_id=? AND revision_key=?'
+            );
+            $select->execute([(int)$runId, $revisionKey]);
+            $row = $select->fetch();
+            if (!$row) {
+                throw new \RuntimeException('profile_external_review_persist_failed');
+            }
+
+            return $this->hydrate($row);
+        };
+        if ($legacyAssistant) {
+            return (new ProfileAiRequestService($this->db, $this->localQueue))->completeLegacyReview((int)$runId, $persist);
         }
-
-        return $this->hydrate($row);
+        return $persist();
     }
 
     public function latestReviewForDisplay(?int $runId = null): ?array

@@ -176,6 +176,55 @@ SQL);
         }
     }
 
+    /**
+     * Historic Assistant compatibility: one atomic claim -> persisted review -> finish.
+     * Uses the very same canonical analysis_jobs FIFO, no parallel queue.
+     *
+     * @param callable():array $persist Must save a completed, sourced revision
+     */
+    public function completeLegacyReview(int $runId, callable $persist): array
+    {
+        $pdo = $this->pdo();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $this->ensureMaintenanceTable();
+            if ((bool)$pdo->query('SELECT paused FROM profile_ai_maintenance WHERE id=1')->fetchColumn()) {
+                throw new \RuntimeException('legacy_assistant_maintenance_paused');
+            }
+            $head = $pdo->query(LocalProfileQueue::headSql())->fetch(\PDO::FETCH_ASSOC);
+            $active = (int)$pdo->query(LocalProfileQueue::activeSql())->fetchColumn();
+            if (!$head || (string)$head['kind'] !== self::KIND
+                || (int)$head['scientific_run_id'] !== $runId || $active > 0) {
+                throw new \RuntimeException('legacy_assistant_fifo_claim_rejected');
+            }
+            $claim = $pdo->prepare("UPDATE analysis_jobs
+                SET status='running',progress=1,error=NULL,updated_at=?
+                WHERE id=? AND scientific_run_id=? AND kind=?
+                AND status='queued' AND dispatch_owner='lab'");
+            $claim->execute([gmdate('c'), (int)$head['id'], $runId, self::KIND]);
+            if ($claim->rowCount() !== 1) throw new \RuntimeException('legacy_assistant_claim_lost');
+
+            $revision = $persist();
+            if (!is_array($revision) || ($revision['status'] ?? null) !== 'completed'
+                || (int)($revision['run_id'] ?? 0) !== $runId) {
+                throw new \RuntimeException('legacy_assistant_review_not_persisted');
+            }
+            $done = $pdo->prepare("UPDATE analysis_jobs
+                SET status='completed',progress=100,error=NULL,updated_at=?
+                WHERE id=? AND scientific_run_id=? AND kind=? AND status='running'");
+            $done->execute([gmdate('c'), (int)$head['id'], $runId, self::KIND]);
+            if ($done->rowCount() !== 1) throw new \RuntimeException('legacy_assistant_finish_lost');
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+        // Post-commit wake: a failed spawn cannot reverse a persisted review.
+        try { $this->localQueue?->wake(); }
+        catch (\Throwable) { /* durable FIFO remains; can be drained later */ }
+        return $revision;
+    }
+
     public function finish(int $runId,string $status,string $message): array
     {
         if (!in_array($status,['completed','error'],true)) throw new \InvalidArgumentException('invalid_status');
