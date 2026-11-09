@@ -42,9 +42,14 @@ final class WorkbenchController extends AbstractController
     #[Route('/home', name: 'workbench_home', methods: ['GET'])]
     public function home(
         CatalogService $catalog,
+        \App\Service\LocalQueueVisibility $visibility,
     ): Response {
+        $songs = $catalog->songs();
+        $queue = $visibility->snapshot($songs);
         return $this->render('workbench/home.html.twig', [
-            'songs' => $catalog->songs(),
+            'songs' => $songs,
+            'queue_active' => $queue['active'],
+            'expertise_by_song' => $queue['expertise_by_song'],
         ]);
     }
 

@@ -39,6 +39,49 @@
      title="Exporter tous les résultats PROFILE disponibles">ZIP ALL</a>
 </div>
 
+<div class="card" id="catalogue-file-commune">
+    <div class="hero">
+        <h2>File commune PROFILE / EXPERTISE IA</h2>
+        <a class="button secondary" href="{{ path('workbench_home') }}">Actualiser la file</a>
+    </div>
+    {% if queue_active is not empty %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Position</th>
+                    <th>Traitement</th>
+                    <th>Chanson</th>
+                    <th>Job / Run</th>
+                    <th>État</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in queue_active %}
+                    <tr>
+                        <td>Position {{ job.position }}</td>
+                        <td>{{ job.type }}</td>
+                        <td>{{ job.song_title }}{% if job.song_artist %} — {{ job.song_artist }}{% endif %}</td>
+                        <td>Job #{{ job.job_id }} · run #{{ job.run_id }}</td>
+                        <td>
+                            {% if job.status == 'queued' %}
+                                En attente
+                            {% elseif job.status == 'cancelling' %}
+                                Annulation demandée
+                            {% else %}
+                                En cours
+                            {% endif %}
+                            · {{ job.progress }} %
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="meta">Aucun traitement LAB en attente ou en cours.</p>
+    {% endif %}
+    <p class="meta">Ordre de la file locale, lecture seule. Un traitement en attente n'est pas une expertise réalisée.</p>
+</div>
+
 <div class="card" id="catalog-live-phase">
 <table>
 <thead>
@@ -79,11 +122,27 @@
               </a>
             </div>
           {% else %}
-            <div class="meta">Révision IA en attente</div>
+            {% set expertise = expertise_by_song[song.id] ?? {active: [], latest: null} %}
+            {% if expertise.active is not empty %}
+                {% for job in expertise.active %}
+                    <div class="meta" data-analysis-active="1">
+                        EXPERTISE IA · Job #{{ job.job_id }} · Position {{ job.position }}
+                        · {{ job.status == 'queued' ? 'En attente' : (job.status == 'cancelling' ? 'Annulation demandée' : 'En cours') }}
+                        · {{ job.progress }} %
+                    </div>
+                {% endfor %}
+            {% elseif expertise.latest is not null %}
+                <div class="meta">
+                    Dernière expertise demandée · Job #{{ expertise.latest.job_id }}
+                    · {{ expertise.latest.status }}
+                </div>
+            {% else %}
+                <div class="meta">Aucune expertise demandée pour ce résultat</div>
+            {% endif %}
           {% endif %}
         {% endif %}
       {% elseif key == 'profile' and s.state == 'legacy_fifo' %}
-        <span class="badge">Ancienne tentative FIFO (historique, hors one-shot)</span>
+        <span class="badge">Ancienne tentative FIFO (historique)</span>
       {% elseif s.state == 'queued' %}
         <span class="badge" data-analysis-active="1">En attente{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
         {% if s.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:s.job_id}) }}" data-job-id="{{ s.job_id }}" title="Annuler le job #{{ s.job_id }}">■</button>{% endif %}
@@ -109,7 +168,7 @@
         {% elseif attempt.state == 'cancelled' %}
           <div class="catalog-attempt"><span class="badge">Dernier essai : annulé</span></div>
         {% elseif attempt.state == 'legacy_fifo' %}
-          <div class="catalog-attempt"><span class="badge">Ancienne tentative FIFO (hors one-shot)</span></div>
+          <div class="catalog-attempt"><span class="badge">Ancienne tentative FIFO (historique)</span></div>
         {% elseif attempt.state == 'queued' %}
           <div class="catalog-attempt"><span class="badge" data-analysis-active="1">Dernier essai : en attente</span>
           {% if attempt.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:attempt.job_id}) }}" data-job-id="{{ attempt.job_id }}" title="Annuler le job #{{ attempt.job_id }}">■</button>{% endif %}</div>

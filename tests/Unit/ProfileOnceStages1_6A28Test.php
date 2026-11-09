@@ -31,7 +31,8 @@ final class ProfileOnceStages1_6A28Test extends TestCase
         self::assertStringContainsString('$group[$item][\'latest_attempt\']', $service);
         self::assertStringContainsString("'legacy_fifo'", $service);
         self::assertStringContainsString("'orchestrator'", $service);
-        self::assertStringContainsString('Ancienne tentative FIFO (hors one-shot)', $twig);
+        self::assertStringContainsString('Ancienne tentative FIFO (historique)', $twig);
+        self::assertStringNotContainsString('one-shot', strtolower($twig));
         self::assertStringContainsString('Résultat scientifique #', $twig);
         self::assertStringContainsString("s.state == 'done'", $twig);
     }

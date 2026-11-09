@@ -4,19 +4,19 @@
 <div class="card hero"><div><h1>PROFILE</h1><div class="meta">Phase PROFILE de la chaîne : caractérisation globale du master avant STEMS.</div></div></div>
 {% include 'workbench/_song_selector.html.twig' %}
 
-{% if app.request.query.get('oneshot') == 'started' %}<div class="card"><strong>PROFILE one-shot demandé.</strong> L’exécution se déroule directement dans un processus PHP CLI distinct, sans file. Actualisez cette page pour consulter le nouveau run ; les journaux sont dans var/logs/profile-once.</div>{% endif %}
+{% if app.request.query.get('oneshot') == 'started' %}<div class="card"><strong>Analyse PROFILE demandée.</strong> Le traitement est inscrit dans la file locale. La progression et le résultat s’affichent automatiquement.</div>{% endif %}
 {% if selected_song %}
 <div class="card">
 <div class="hero">
 <div><h2>{{ selected_song.title }}{% if selected_song.artist %} — {{ selected_song.artist }}{% endif %}</h2><div class="meta">PROFILE ne lance jamais STEMS automatiquement.</div></div>
-<form method="post" action="{{ path('profile_analyze') }}"><input type="hidden" name="song" value="{{ selected_song.id }}"><button type="submit">Analyser le profil (one-shot)</button></form>
+<form method="post" action="{{ path('profile_analyze') }}"><input type="hidden" name="song" value="{{ selected_song.id }}"><button type="submit">Analyser le profil</button></form>
 </div>
 </div>
 
-{# One observer per song: no URL-dependent visibility, no legacy reload. #}
+{# Un observateur par chanson, sans rechargement pendant le calcul. #}
 {% if selected_song %}
 <div class="card profile-step-observer" id="profile-step-observer" hidden aria-live="polite">
-  <h2>Progression scientifique PROFILE (one-shot)</h2>
+  <h2>Progression scientifique PROFILE</h2>
   <div class="meta" id="profile-step-state">Recherche de l’exécution active…</div>
   <progress id="profile-step-progress" value="0" max="100" style="width:100%;height:18px">0%</progress>
   <div class="meta" id="profile-step-current">Étape courante non encore observée.</div>
@@ -94,10 +94,23 @@
         }
         if (['completed','cancelled','failed'].includes(data.job_status) || ['done','error','cancelled'].includes(data.state)) {
           cancel.hidden=true;
-          const a=document.createElement('a');
-          a.href=resultUrl+'&run='+Number(data.run_id);
-          a.textContent='Consulter le run #'+Number(data.run_id);
-          if (!panel.querySelector('a')) panel.appendChild(a);
+          const runId=Number(data.run_id);
+          const validRun=Number.isSafeInteger(runId) && runId>0;
+          const destination=validRun ? resultUrl+(resultUrl.includes('?')?'&':'?')+'run='+encodeURIComponent(String(runId)) : '';
+          // Navigate once to the completed run; never redirect an error or cancellation.
+          // The result URL has no 'oneshot=started' flag, preventing a navigation loop.
+          if (data.job_status==='completed' && data.state==='done' && bar.value===100
+              && validRun && (hadActive || (requested && newer))) {
+            state.textContent='Analyse terminée. Affichage du résultat PROFILE…';
+            window.location.assign(destination);
+            return;
+          }
+          if (validRun && !panel.querySelector('a')) {
+            const a=document.createElement('a');
+            a.href=destination;
+            a.textContent='Consulter le run #'+runId;
+            panel.appendChild(a);
+          }
           if (data.job_status==='cancelled') cancelStatus.textContent='Annulation confirmée.';
           return;
         }
@@ -205,7 +218,7 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
     </div>
   {% endif %}
 
-  {# Legacy FIFO reload polling retired; one-shot observer owns live updates. #}
+  {# L’observateur local assure le suivi de la progression. #}
 {% if selected_profile_run.state == 'done' %}
 {% set completed_modules = selected_profile_run.diagnostics.module_registry.modules ?? [] %}
 {% if completed_modules is not empty %}
