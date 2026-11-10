@@ -69,7 +69,7 @@
           {% if song.profile_ai_reviewed ?? false %}
             <div>
               <span class="badge ok" title="Avis IA documentaire déjà enregistré ; sans validation scientifique">Révisé par l’IA</span>
-              <a href="{{ path('workbench_profile', {song: song.id, run: song.profile.run_id}) }}">
+              <a href="{{ path('workbench_profile', {song: song.id, run: song.profile.run_id}) }}#profile-ai-revision-{{ song.profile_ai_revision_id }}">
                 <span class="meta">Voir la révision #{{ song.profile_ai_revision_id }}</span>
               </a>
             </div>

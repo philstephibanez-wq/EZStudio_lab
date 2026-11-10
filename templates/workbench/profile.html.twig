@@ -273,7 +273,7 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
 
 {# PROFILE_R3D_AI_REVIEW — consultation, aucune promotion de preset #}
 {% if selected_profile_run.state == 'done' %}
-    <div class="card profile-ai-review">
+    <div class="card profile-ai-review" id="profile-ai-revisions">
         {% include 'workbench/profile_ai_button.html.twig' %}
 <h2>Révision IA du profil</h2>
         <p class="meta">
@@ -295,7 +295,7 @@ document.getElementById('song-identity-form')?.addEventListener('submit', async 
                 {% set comparison = revision.comparison.assistant_ai ?? {} %}
                 {% set dimensions = comparison.dimensions ?? {} %}
                 {% set external = revision.comparison.external_validation ?? {} %}
-                <section class="profile-ai-revision">
+                <section class="profile-ai-revision" id="profile-ai-revision-{{ revision.id }}">
                     <div class="row">
                         <strong>
                             Révision #{{ revision.id }} ·

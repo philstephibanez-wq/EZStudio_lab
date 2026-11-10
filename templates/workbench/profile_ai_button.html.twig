@@ -10,7 +10,7 @@
     <div class="meta" role="status" id="profile-ai-request-state">Consultation…</div>
     <div class="meta" id="profile-ai-current-item" aria-live="polite" hidden></div>
   </div>
-  <button type="button" id="profile-ai-refresh-results" hidden onclick="window.location.reload()">Afficher la révision enregistrée</button>
+  <button type="button" id="profile-ai-refresh-results" hidden>Afficher la révision enregistrée</button>
 </div>
 <script>
 (function () {
@@ -20,6 +20,7 @@
  const button=document.getElementById('profile-ai-run-button');
  const progress=document.getElementById('profile-ai-progress');
  const currentItem=document.getElementById('profile-ai-current-item');
+ const refreshLink=document.getElementById('profile-ai-refresh-results');
  if (!root || !form || !state || !button || !progress || !currentItem) return;
 
  function show(item) {
@@ -46,7 +47,6 @@
    button.disabled=s==='running'||s==='queued'||s==='cancelling';
    // Never reload automatically: a completed job remains completed across visits.
    // The revision is persisted; the user can refresh results exactly once on demand.
-   const refreshLink=document.getElementById('profile-ai-refresh-results');
    if (refreshLink) refreshLink.hidden=s!=='completed';
 
  }
@@ -57,6 +57,12 @@
      const j=await r.json();show(j.request);
    } catch (e) {state.textContent='Suivi indisponible : '+e.message;progress.removeAttribute('value');currentItem.hidden=true;}
  }
+ // Force a new document fetch rather than a same-page hash jump on stale DOM.
+ // The run remains selected in the URL; the server reads the persisted LAB revision.
+ if (refreshLink) refreshLink.addEventListener('click',function(){
+   window.location.hash='profile-ai-revisions';
+   window.location.reload();
+ });
  button.addEventListener('click',async function(e){
    e.preventDefault();button.disabled=true;state.textContent='Demande en cours…';progress.removeAttribute('value');currentItem.hidden=true;
    try {
