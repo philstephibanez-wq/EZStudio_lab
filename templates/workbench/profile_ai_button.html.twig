@@ -33,15 +33,17 @@
    const info=s==='completed' ? 'Révision IA terminée' :
      s==='running' ? 'Analyse IA en cours'+(known && number>1 ? ' · '+Math.round(number)+' %' : '') :
      s==='queued' ? 'Révision IA en attente' :
+     s==='cancelling' ? 'Annulation de la révision IA demandée' :
+     s==='cancelled' ? 'Révision IA annulée' :
      s==='error' ? 'Erreur de révision IA' : 'Aucune révision en cours';
-   state.textContent=info+(item?.message ? ' · '+item.message : '');
+   state.textContent=info+(item?.job_id ? ' · Job #'+item.job_id : '')+(item?.message ? ' · '+item.message : '');
    // The worker will expose the actual item only once sequenced analysis is implemented.
    const itemName=typeof item?.current_item==='string' ? item.current_item.trim() : '';
    const step=Number(item?.item_index), total=Number(item?.item_total);
    const stepLabel=Number.isInteger(step) && Number.isInteger(total) && step>0 && total>=step ? ' · '+step+'/'+total : '';
    currentItem.textContent=s==='running' && itemName ? 'Item analysé : '+itemName.slice(0,160)+stepLabel : '';
    currentItem.hidden=!currentItem.textContent;
-   button.disabled=s==='running'||s==='queued';
+   button.disabled=s==='running'||s==='queued'||s==='cancelling';
    // Never reload automatically: a completed job remains completed across visits.
    // The revision is persisted; the user can refresh results exactly once on demand.
    const refreshLink=document.getElementById('profile-ai-refresh-results');

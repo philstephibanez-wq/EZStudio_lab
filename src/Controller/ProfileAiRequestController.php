@@ -168,13 +168,37 @@ final class ProfileAiRequestController extends AbstractController
         return $this->json(['claimed'=>$this->queue->claim($id)]);
     }
 
+    /** Cooperative cancellation probe, protected by the existing LAB token. */
+    #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/state',name:'lab_internal_profile_ai_state',methods:['GET'])]
+    public function executionState(Request $request, int $id): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        $jobId=filter_var($request->query->get('job_id'), FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+        if ($jobId===false || $jobId===null) return $this->json(['error'=>'invalid_job_id'],422);
+        try { return $this->json(['request'=>$this->queue->executionState($id,(int)$jobId)]); }
+        catch (\RuntimeException $e) { return $this->json(['error'=>$e->getMessage()],409); }
+    }
+
+    /** The worker acknowledges only after its own execution has unwound. */
+    #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/cancelled',name:'lab_internal_profile_ai_cancelled',methods:['POST'])]
+    public function executionCancelled(Request $request, int $id): JsonResponse
+    {
+        $this->guard->assertAuthorized($request);
+        try {
+            $payload=$request->toArray();
+            $jobId=filter_var($payload['job_id']??null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+            if ($jobId===false || $jobId===null) return $this->json(['error'=>'invalid_job_id'],422);
+            return $this->json(['ok'=>true,'request'=>$this->queue->acknowledgeCancellation($id,(int)$jobId)]);
+        } catch (\Throwable $e) { return $this->json(['error'=>$e->getMessage()],409); }
+    }
+
     #[Route('/internal/analysis/desktop/profile/ai-requests/{id<\d+>}/finish',name:'lab_internal_profile_ai_finish',methods:['POST'])]
     public function finish(Request $request,int $id): JsonResponse
     {
         $this->guard->assertAuthorized($request);
         try {
             $p=$request->toArray();
-            return $this->json(['ok'=>true,'request'=>$this->queue->finish($id,(string)($p['status']??''),(string)($p['message']??''))]);
+            return $this->json(['ok'=>true,'request'=>$this->queue->finish($id,(string)($p['status']??''),(string)($p['message']??''),isset($p['job_id'])?(int)$p['job_id']:null)]);
         } catch (\Throwable $e) {return $this->json(['error'=>$e->getMessage()],409);}
     }
 }

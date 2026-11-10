@@ -240,6 +240,24 @@ SQL);
         if ($legacyAssistant) {
             return (new ProfileAiRequestService($this->db, $this->localQueue))->completeLegacyReview((int)$runId, $persist);
         }
+        // An Assistant draft must not be persisted after an operator cancellation.
+        // The immediate transaction serializes status check and revision write
+        // against the existing cancellation transaction on the SAME LAB SQLite DB.
+        if ($reviewer === 'assistant-lab-ui-qwen') {
+            $pdo=$this->db->pdo();
+            $pdo->exec('BEGIN IMMEDIATE');
+            try {
+                $stmt=$pdo->prepare("SELECT status FROM analysis_jobs WHERE scientific_run_id=? AND kind='assistant.profile.review' AND dispatch_owner='lab' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([(int)$runId]);
+                if ($stmt->fetchColumn()!=='running') throw new \RuntimeException('expertise_not_running_review_rejected');
+                $revision=$persist();
+                $pdo->commit();
+                return $revision;
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+        }
         return $persist();
     }
 

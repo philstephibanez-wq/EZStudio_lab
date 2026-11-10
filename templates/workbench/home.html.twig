@@ -39,49 +39,6 @@
      title="Exporter tous les résultats PROFILE disponibles">ZIP ALL</a>
 </div>
 
-<div class="card" id="catalogue-file-commune">
-    <div class="hero">
-        <h2>File commune PROFILE / EXPERTISE IA</h2>
-        <a class="button secondary" href="{{ path('workbench_home') }}">Actualiser la file</a>
-    </div>
-    {% if queue_active is not empty %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Position</th>
-                    <th>Traitement</th>
-                    <th>Chanson</th>
-                    <th>Job / Run</th>
-                    <th>État</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for job in queue_active %}
-                    <tr>
-                        <td>Position {{ job.position }}</td>
-                        <td>{{ job.type }}</td>
-                        <td>{{ job.song_title }}{% if job.song_artist %} — {{ job.song_artist }}{% endif %}</td>
-                        <td>Job #{{ job.job_id }} · run #{{ job.run_id }}</td>
-                        <td>
-                            {% if job.status == 'queued' %}
-                                En attente
-                            {% elseif job.status == 'cancelling' %}
-                                Annulation demandée
-                            {% else %}
-                                En cours
-                            {% endif %}
-                            · {{ job.progress }} %
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p class="meta">Aucun traitement LAB en attente ou en cours.</p>
-    {% endif %}
-    <p class="meta">Ordre de la file locale, lecture seule. Un traitement en attente n'est pas une expertise réalisée.</p>
-</div>
-
 <div class="card" id="catalog-live-phase">
 <table>
 <thead>
@@ -111,34 +68,11 @@
         {% if key == 'profile' %}
           {% if song.profile_ai_reviewed ?? false %}
             <div>
-              <span
-                class="badge ok"
-                title="Avis IA enregistré pour ce run PROFILE ; ne signifie pas une validation scientifique indépendante"
-              >
-                Révisé par l’IA
-              </span>
+              <span class="badge ok" title="Avis IA documentaire déjà enregistré ; sans validation scientifique">Révisé par l’IA</span>
               <a href="{{ path('workbench_profile', {song: song.id, run: song.profile.run_id}) }}">
                 <span class="meta">Voir la révision #{{ song.profile_ai_revision_id }}</span>
               </a>
             </div>
-          {% else %}
-            {% set expertise = expertise_by_song[song.id] ?? {active: [], latest: null} %}
-            {% if expertise.active is not empty %}
-                {% for job in expertise.active %}
-                    <div class="meta" data-analysis-active="1">
-                        EXPERTISE IA · Job #{{ job.job_id }} · Position {{ job.position }}
-                        · {{ job.status == 'queued' ? 'En attente' : (job.status == 'cancelling' ? 'Annulation demandée' : 'En cours') }}
-                        · {{ job.progress }} %
-                    </div>
-                {% endfor %}
-            {% elseif expertise.latest is not null %}
-                <div class="meta">
-                    Dernière expertise demandée · Job #{{ expertise.latest.job_id }}
-                    · {{ expertise.latest.status }}
-                </div>
-            {% else %}
-                <div class="meta">Aucune expertise demandée pour ce résultat</div>
-            {% endif %}
           {% endif %}
         {% endif %}
       {% elseif key == 'profile' and s.state == 'legacy_fifo' %}
@@ -157,6 +91,32 @@
         <span class="badge">Configuré</span>
       {% else %}
         <span class="badge">—</span>
+      {% endif %}
+      {% if key == 'profile' %}
+          {% set expertise = expertise_by_song[song.id] ?? {active: [], latest: null} %}
+          {% for job in expertise.active %}
+            <div class="meta" data-analysis-active="1">
+              EXPERTISE IA · Job #{{ job.job_id }} · Position {{ job.position }}
+              · {{ job.status == 'queued' ? 'En attente' : (job.status == 'cancelling' ? 'Annulation demandée' : 'En cours') }}
+              · {{ job.progress }} %
+              {% if job.status in ['queued', 'running'] %}
+                <button type="button" class="secondary catalog-job-cancel"
+                        data-job-cancel-url="{{ path('analysis_job_cancel', {id: job.job_id}) }}"
+                        data-job-id="{{ job.job_id }}"
+                        title="Annuler l’expertise #{{ job.job_id }}"
+                        aria-label="Annuler l’expertise #{{ job.job_id }}">■ Annuler</button>
+              {% endif %}
+            </div>
+          {% else %}
+            {% if expertise.latest is not null %}
+              <div class="meta">
+                Dernière expertise · Job #{{ expertise.latest.job_id }}
+                · {% if expertise.latest.status == 'cancelled' %}Annulée{% elseif expertise.latest.status == 'completed' %}Terminée{% elseif expertise.latest.status == 'error' %}Erreur{% else %}{{ expertise.latest.status }}{% endif %}
+              </div>
+            {% elseif not (song.profile_ai_reviewed ?? false) %}
+              <div class="meta">Aucune expertise demandée</div>
+            {% endif %}
+          {% endfor %}
       {% endif %}
       {% if key == 'profile' and s.state == 'done' and s.run_id %}
         <div class="meta"><a href="{{ path('workbench_profile',{song:song.id,run:s.run_id}) }}">Résultat scientifique #{{ s.run_id }}</a></div>

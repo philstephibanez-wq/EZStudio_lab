@@ -38,12 +38,12 @@ final class ProfileAiRequestService
             $run=$stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$run) throw new \RuntimeException('run_profile_non_termine');
             $current=$this->latest($runId);
-            if ($current && in_array($current['status'],['queued','running'],true)) {
+            if ($current && in_array($current['status'],['queued','running','cancelling'],true)) {
                 $pdo->commit(); return $current;
             }
             $now=gmdate('c');
             // Reuse an existing logical job; never create duplicates for the same run.
-            if ($current) {
+            if ($current && $current['status'] !== 'cancelled') {
                 $pdo->prepare("UPDATE analysis_jobs SET status='queued',progress=0,error=NULL,created_at=?,updated_at=? WHERE id=?")
                     ->execute([$now,$now,(int)$current['job_id']]);
             } else {
@@ -225,11 +225,59 @@ SQL);
         return $revision;
     }
 
-    public function finish(int $runId,string $status,string $message): array
+    /** Exact-attempt probe: no accidental adoption of a recycled run ID. */
+    public function executionState(int $runId,int $jobId): array
+    {
+        $stmt=$this->pdo()->prepare("SELECT id,scientific_run_id,status,kind,dispatch_owner FROM analysis_jobs WHERE id=? AND scientific_run_id=? AND kind=? AND dispatch_owner='lab' LIMIT 1");
+        $stmt->execute([$jobId,$runId,self::KIND]);
+        $row=$stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) throw new \RuntimeException('expertise_job_attempt_not_found');
+        return ['job_id'=>(int)$row['id'],'run_id'=>(int)$row['scientific_run_id'],'status'=>(string)$row['status']];
+    }
+
+    /** Called only by the worker after all its work for this exact attempt has stopped. */
+    public function acknowledgeCancellation(int $runId,int $jobId): array
+    {
+        $pdo=$this->pdo();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $job=$this->executionState($runId,$jobId);
+            if ($job['status']==='cancelling') {
+                $stmt=$pdo->prepare("UPDATE analysis_jobs SET status='cancelled',progress=0,error='cancelled_by_user',updated_at=? WHERE id=? AND scientific_run_id=? AND kind=? AND dispatch_owner='lab' AND status='cancelling'");
+                $stmt->execute([gmdate('c'),$jobId,$runId,self::KIND]);
+                if ($stmt->rowCount()!==1) throw new \RuntimeException('expertise_cancel_ack_lost');
+            } elseif ($job['status']!=='cancelled') {
+                throw new \RuntimeException('expertise_job_not_cancelling');
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+        try { $this->localQueue?->wake(); }
+        catch (\Throwable $e) { error_log('expertise_cancel_wake: '.$e->getMessage()); }
+        return $this->executionState($runId,$jobId);
+    }
+
+    public function finish(int $runId,string $status,string $message,?int $jobId=null): array
     {
         if (!in_array($status,['completed','error'],true)) throw new \InvalidArgumentException('invalid_status');
-        $stmt=$this->pdo()->prepare("UPDATE analysis_jobs SET status=?,progress=?,error=?,updated_at=? WHERE scientific_run_id=? AND kind=? AND status='running'");
-        $stmt->execute([$status,$status==='completed'?100:0,mb_substr($message,0,1000),gmdate('c'),$runId,self::KIND]);
+        // All patched workers supply the exact job ID. Unfenced legacy calls are
+        // refused after a prior cancellation to prevent a late finish crossing attempts.
+        if ($jobId===null) {
+            $historical=$this->pdo()->prepare("SELECT COUNT(*) FROM analysis_jobs WHERE scientific_run_id=? AND kind=? AND error LIKE 'cancel%'");
+            $historical->execute([$runId,self::KIND]);
+            if ((int)$historical->fetchColumn()>0) throw new \RuntimeException('unfenced_finish_after_cancellation');
+        }
+        $sql="UPDATE analysis_jobs SET status=?,progress=?,error=?,updated_at=? WHERE scientific_run_id=? AND kind=? AND dispatch_owner='lab' AND status='running'";
+        $args=[$status,$status==='completed'?100:0,mb_substr($message,0,1000),gmdate('c'),$runId,self::KIND];
+        if ($jobId!==null) {
+            if ($jobId<1) throw new \InvalidArgumentException('invalid_job_id');
+            $sql.=' AND id=?';
+            $args[]=$jobId;
+        }
+        $stmt=$this->pdo()->prepare($sql);
+        $stmt->execute($args);
         if ($stmt->rowCount()!==1) throw new \RuntimeException('request_not_running');
         // Schedule the next local PROFILE job, if the FIFO head now permits it.
         try { $this->localQueue?->wake(); }

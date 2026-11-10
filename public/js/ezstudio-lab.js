@@ -93,8 +93,23 @@ function initPerformance(){
 }
 function catalogRegion(){return $('#catalog-live-phase').first();}
 function applyCatalogHtml(html){const $r=catalogRegion();if(!$r.length)return false;const nodes=$.parseHTML(String(html||''),document,true)||[],$wrap=$('<div>').append(nodes),$next=$wrap.find('#catalog-live-phase').first();if(!$next.length)return false;$r.html($next.html());return true;}
-function refreshCatalog(){const $r=catalogRegion();if(!$r.length)return;$.ajax({url:window.location.href,method:'GET',dataType:'html',cache:false}).done(html=>{if(applyCatalogHtml(html))scheduleCatalog();});}
-function scheduleCatalog(){clearTimeout(window.ezstudioCatalogTimer);if($('#catalog-live-phase [data-analysis-active="1"]').length)window.ezstudioCatalogTimer=setTimeout(refreshCatalog,2500);}
+function refreshCatalog(){
+ const $r=catalogRegion();
+ if(!$r.length)return;
+ if(document.hidden){scheduleCatalog();return;}
+ if(window.ezsCatalogRefreshing)return;
+ window.ezsCatalogRefreshing=true;
+ $.ajax({url:window.location.href,method:'GET',dataType:'html',cache:false})
+  .done(html=>{if(!applyCatalogHtml(html))catalogQueueError('Actualisation du Catalogue incomplète.');})
+  .fail(xhr=>catalogQueueError('Actualisation indisponible · HTTP '+xhr.status))
+  .always(()=>{window.ezsCatalogRefreshing=false;scheduleCatalog();});
+}
+function scheduleCatalog(){
+ clearTimeout(window.ezstudioCatalogTimer);
+ if(!catalogRegion().length)return;
+ const active=$('#catalog-live-phase [data-analysis-active="1"]').length>0;
+ window.ezstudioCatalogTimer=setTimeout(refreshCatalog,active?2500:6000);
+}
 function initCatalog(){
  const ns='.ezstudioCatalog';
  $(document).off(ns);
