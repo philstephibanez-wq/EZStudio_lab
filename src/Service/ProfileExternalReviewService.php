@@ -318,7 +318,7 @@ SQL;
                 'key'=>$key, 'label'=>$label,
                 'lab_value'=>$candidate['value'] ?? $assertion['value'] ?? null,
                 'external_value'=>in_array($verdict, ['bon','faux'], true) ? ($assertion['reference_value'] ?? null) : null,
-                'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'MAUVAIS' : 'INCONNU'),
+                'verdict'=>$verdict === 'bon' ? 'BON' : ($verdict === 'faux' ? 'FAUX' : ($verdict === 'sans_valeur_lab' ? 'SANS VALEUR LAB' : 'NON TROUVÉ')),
                 'reason'=>$assertion['reason'] ?? $review['explanation'] ?? null,
                 'proposed_verdict'=>$assertion['proposed_verdict'] ?? null,
                 'documentary_observation'=>$assertion['documentary_observation'] ?? null,
